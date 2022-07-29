@@ -36,11 +36,14 @@ namespace FPSController
         public Interactable lookingAt;
         public Interactable interactingWith;
 
-        public GameObject top, bottom;
+        public SphereCollider top, bottom;
+
+        public Seat seat;
 
         public float vertical, horizontal;
 
         public bool controlling;
+        public bool IsSitting => seat != null;
         public bool IsLocal => Machine.InternalObject == LocalMachine.Active() || !StatMaster.isMP;
         public bool IsServer => StatMaster.isHosting || !StatMaster.isMP || StatMaster.isLocalSim;
         public bool IsFixedCameraActive => FixedCameraController.Instance.activeCamera;
@@ -100,7 +103,7 @@ namespace FPSController
             jump = AddKey("Jump", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
-            
+            pitchLimits.UseLimitsToggle.DisplayInMapper = false;
             _oldFov = ViewCamera.fieldOfView;
             _oldNearClip = ViewCamera.nearClipPlane;
 
@@ -112,23 +115,23 @@ namespace FPSController
                 if (old != null)
                     Destroy(old);
 
-                top = new GameObject("Top");
-                top.transform.parent = transform;
-                top.transform.localPosition = Vector3.zero;
-                top.transform.localEulerAngles = Vector3.zero;
-                SphereCollider bottomCollider = top.AddComponent<SphereCollider>();
-                bottomCollider.radius = 0.5F;
-                bottomCollider.center = new Vector3(0, 0, 0);
-                bottomCollider.sharedMaterial = Mod.LowFriction;
+                GameObject topObj = new GameObject("Top");
+                topObj.transform.parent = transform;
+                topObj.transform.localPosition = Vector3.zero;
+                topObj.transform.localEulerAngles = Vector3.zero;
+                top = topObj.AddComponent<SphereCollider>();
+                top.radius = 0.5F;
+                top.center = new Vector3(0, 0, 0);
+                top.sharedMaterial = Mod.LowFriction;
 
-                bottom = new GameObject("Bottom");
-                bottom.transform.parent = transform;
-                bottom.transform.localPosition = Vector3.zero;
-                bottom.transform.localEulerAngles = Vector3.zero;
-                SphereCollider topCollider = bottom.AddComponent<SphereCollider>();
-                topCollider.radius = 0.5F;
-                topCollider.center = new Vector3(0, -1F, 0);
-                topCollider.sharedMaterial = Mod.LowFriction;
+                GameObject bottomObj = new GameObject("Bottom");
+                bottomObj.transform.parent = transform;
+                bottomObj.transform.localPosition = Vector3.zero;
+                bottomObj.transform.localEulerAngles = Vector3.zero;
+                bottom = bottomObj.AddComponent<SphereCollider>();
+                bottom.radius = 0.5F;
+                bottom.center = new Vector3(0, -1F, 0);
+                bottom.sharedMaterial = Mod.LowFriction;
             }
         }
 
@@ -144,7 +147,7 @@ namespace FPSController
         public override void SimulateUpdateAlways()
         {
             lookingAt = null;
-            
+
             if (IsLocal)
             {
                 if (!IsFixedCameraActive && activateKey.IsPressed)
@@ -180,15 +183,25 @@ namespace FPSController
                     t_rotationY = ClampAngle(t_rotationY, -85F, 85F);
                     rotationX = Mathf.Lerp(rotationX, t_rotationX, smoothing.Value * Time.unscaledDeltaTime);
                     rotationY = Mathf.Lerp(rotationY, t_rotationY, smoothing.Value * Time.unscaledDeltaTime);
+
                     Quaternion xQuaternion = Quaternion.AngleAxis(rotationX, Vector3.up);
                     Quaternion yQuaternion = Quaternion.AngleAxis(rotationY, -Vector3.right);
-                    ViewCamera.transform.localRotation = xQuaternion * yQuaternion;
+                    ViewCamera.transform.rotation = xQuaternion * yQuaternion;
+
+                    if (IsSitting)
+                    {
+                        Quaternion offset = Quaternion.AngleAxis(-90, -Vector3.right);
+                        ViewCamera.transform.rotation = seat.transform.rotation * offset * xQuaternion * yQuaternion;
+                    } else
+                    {
+                        ViewCamera.transform.rotation = xQuaternion * yQuaternion;
+                    }
 
                     if (jump.IsPressed)
                         if (IsServer)
                             Jump();
                         else
-                            ModNetworking.SendToHost(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
+                            ModNetworking.SendToAll(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
 
                     if (Physics.Raycast(ViewCamera.transform.position, ViewCamera.transform.forward, out RaycastHit hit, interactDistance.Value, Game.BlockEntityLayerMask))
                     {
@@ -246,7 +259,7 @@ namespace FPSController
 
         private void FixedUpdate()
         {
-            bottom.transform.eulerAngles = Vector3.zero;
+            bottom.gameObject.transform.eulerAngles = Vector3.zero;
 
             if (inputRotation != Vector3.zero)
                 _lastNonZeroRotation = inputRotation;
@@ -259,7 +272,7 @@ namespace FPSController
                     MouseOrbit.Instance.camUp = ViewCamera.transform.up;
 
                     inputDirection = Vector3.ProjectOnPlane(ViewCamera.transform.forward, Vector3.up).normalized * vertical + ViewCamera.transform.right * horizontal;
-                    inputRotation = ViewCamera.transform.localEulerAngles;
+                    inputRotation = ViewCamera.transform.eulerAngles;
                 }
                 else
                     inputDirection = inputRotation = Vector3.zero;
@@ -286,22 +299,34 @@ namespace FPSController
                 inputDirection = Vector3.ClampMagnitude(inputDirection, 1);
                 Vector3 goalVel = groundVelocity + Vector3.Scale(inputDirection, new Vector3(1, 0, 1)) * speed.Value;
 
+                if (IsSitting)
+                {
+                    groundVelocity = seat.Rigidbody.velocity;
+                    goalVel = groundVelocity + Vector3.ClampMagnitude(seat.transform.position + seat.transform.forward * 1.75F - transform.position, 1) * 16;
+                }
+
                 goalVel = Vector3.MoveTowards(goalVel, goalVel + bodyVelocity, timestep);
 
                 Vector3 neededAccel = (goalVel - bodyVelocity) / timestep;
 
                 neededAccel = Vector3.ClampMagnitude(neededAccel, groundVelocity == Vector3.zero ? acceleration.Value : 1000000);
 
-                Rigidbody.AddForce(Vector3.Scale(neededAccel, new Vector3(1, 0, 1)) * Rigidbody.mass);
+                Rigidbody.AddForce(Vector3.Scale(neededAccel, new Vector3(1, IsSitting ? 1 : 0, 1)) * Rigidbody.mass);
 
                 if (_lastNonZeroRotation.x > 180)
                     _lastNonZeroRotation.x = _lastNonZeroRotation.x - 360;
+                if (_lastNonZeroRotation.z > 180)
+                    _lastNonZeroRotation.z = _lastNonZeroRotation.z - 360;
+                const float maxRotationDelta = 10;
 
-                const float maxRotationDelta = 30;
-
-                Quaternion target = Quaternion.Euler(_originalRotation.x + Mathf.Clamp(_lastNonZeroRotation.x, -pitchLimits.Max, pitchLimits.Min), _lastNonZeroRotation.y, _originalRotation.z);
-
+                Debug.Log(_lastNonZeroRotation);
+                Quaternion target = Quaternion.Euler(
+                    _originalRotation.x + Mathf.Clamp(_lastNonZeroRotation.x, -pitchLimits.Max, pitchLimits.Min), // remove original rotation
+                    _lastNonZeroRotation.y, 
+                    _originalRotation.z) * Quaternion.AngleAxis(_lastNonZeroRotation.z, -Vector3.up);
+                    
                 Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
+
             }
         }
 
@@ -315,6 +340,17 @@ namespace FPSController
             ViewCamera.nearClipPlane = HUDCamera.nearClipPlane = value ? 0.05F : _oldNearClip;
             MouseOrbit.Instance.isActive = !value;
             meshRenderer.shadowCastingMode = value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
+        }
+
+        public void SetSitting(Seat other)
+        {
+            if (seat != null)
+                seat.passenger = null;
+            seat = other;
+
+            top.enabled = bottom.enabled = !IsSitting;
+            if (IsServer)
+                Rigidbody.useGravity = !IsSitting;
         }
 
         public override void OnSimulateStop()
@@ -354,8 +390,12 @@ namespace FPSController
         {
             int layerMask = Game.BlockEntityLayerMask | 1 | 1 << 29;
 
-            if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, layerMask))
-                Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
+            if (IsSitting)
+                SetSitting(null);
+
+            if (IsServer)
+                if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, layerMask))
+                    Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
         }
 
         public Vector3 GetGroundVelocitySpread()

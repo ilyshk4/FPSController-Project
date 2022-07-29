@@ -117,7 +117,8 @@ namespace FPSController
         {
             Block block = msg.GetData(0) as Block;
             Controller controller = block.BlockScript as Controller;
-            controller?.Jump();
+            if (controller?.Machine.Player == msg.Sender)
+                controller?.Jump();
         }
 
         private void OnControllerMessage(Message msg)
@@ -126,11 +127,12 @@ namespace FPSController
             Controller controller = block.BlockScript as Controller;
             Vector3 direction = (Vector3)msg.GetData(1);
             Vector3 rotation = (Vector3)msg.GetData(2);
-            if (controller != null)
-            {
-                controller.inputDirection = direction;
-                controller.inputRotation = rotation;
-            }
+            if (controller?.Machine.Player == msg.Sender)
+                if (controller != null)
+                {
+                    controller.inputDirection = direction;
+                    controller.inputRotation = rotation;
+                }
         }
     }
 }
