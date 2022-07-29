@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Linq;
 using Modding;
 using Modding.Blocks;
 using UnityEngine;
@@ -26,7 +27,7 @@ namespace FPSController
         public MSlider jumpForce;
         public MSlider mass;
 
-        public MKey startStopControlling;
+        public MKey activateKey;
         public MKey jump;
         public MKey interact;
 
@@ -42,6 +43,7 @@ namespace FPSController
         public bool controlling;
         public bool IsLocal => Machine.InternalObject == LocalMachine.Active() || !StatMaster.isMP;
         public bool IsServer => StatMaster.isHosting || !StatMaster.isMP || StatMaster.isLocalSim;
+        public bool IsFixedCameraActive => FixedCameraController.Instance.activeCamera;
 
         private Camera _viewCamera;
         public Camera ViewCamera
@@ -94,7 +96,7 @@ namespace FPSController
             groundStickSpread = AddSlider("Ground Stick Spread", "stick-spread", 20, 0, 85);
             interactDistance = AddSlider("Interact Distance", "interact-distance", 5, 0, 15F);
             mass = AddSlider("Mass", "mass", 5, 1, 15F);
-            startStopControlling = AddKey("Active", "active", KeyCode.B);
+            activateKey = AddKey("Active", "active", KeyCode.B);
             jump = AddKey("Jump", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
@@ -145,8 +147,11 @@ namespace FPSController
             
             if (IsLocal)
             {
-                if (startStopControlling.IsPressed)
+                if (!IsFixedCameraActive && activateKey.IsPressed)
                     SetControlling(!controlling);
+
+                if (IsFixedCameraActive && controlling)
+                    SetControlling(false);
 
                 const float inputStepScale = 4;
 
