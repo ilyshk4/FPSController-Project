@@ -15,9 +15,9 @@ namespace FPSController
         public static PhysicMaterial maxFriction;
 
         public static Mesh ButtonBase, ButtonTop;
+
         public static Texture2D Crosshair;
         public static Texture2D HintBackground;
-
         public static Texture2D Fill;
 
         public static GUIStyle InfoText;
@@ -26,12 +26,14 @@ namespace FPSController
         public static Mesh CharacterMesh;
         public static Material CharacterMaterial;
 
+        public static PhysicMaterial LowFriction;
+
         public override void OnLoad()
 		{
             SetControllerDirectionRotation = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3);
             Jump = ModNetworking.CreateMessageType(DataType.Block);
-            StartInteraction = ModNetworking.CreateMessageType(DataType.Block);
-            StopInteraction = ModNetworking.CreateMessageType(DataType.Block);
+            StartInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
+            StopInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
 
             ModNetworking.MessageReceived += OnMessageReceived;
 
@@ -70,40 +72,71 @@ namespace FPSController
             CharacterMesh = peasant.GetComponentInChildren<MeshFilter>().mesh;
             CharacterMaterial = peasant.GetComponentInChildren<MeshRenderer>().sharedMaterial;
 
-            Debug.Log(peasant);
+            LowFriction = new PhysicMaterial()
+            {
+                dynamicFriction = 0,
+                staticFriction = 0
+            };
         }
 
         private void OnMessageReceived(Message msg)
         {
-            if (msg.Type == SetControllerDirectionRotation)
+            try
             {
-                Block block = msg.GetData(0) as Block;
-                Controller controller = block.BlockScript as Controller;
-                Vector3 direction = (Vector3)msg.GetData(1);
-                Vector3 rotation = (Vector3)msg.GetData(2);
+                if (msg.Type == SetControllerDirectionRotation)
+                    OnControllerMessage(msg);
+
+                if (msg.Type == Jump)
+                    OnJumpMessage(msg);
+
+                if (msg.Type == StartInteraction)
+                    OnStartInteractionMessage(msg);
+
+                if (msg.Type == StopInteraction)
+                    OnStopInteractionMessage(msg);
+            } catch
+            {
+                // :(
+            }
+        }
+
+        private void OnStopInteractionMessage(Message msg)
+        {
+            Block block = msg.GetData(0) as Block;
+            Block block2 = msg.GetData(1) as Block;
+            Controller controller = block.BlockScript as Controller;
+            Interactable interactable = block2.BlockScript as Interactable;
+            if (controller?.Machine.Player == msg.Sender)
+                interactable?.StopInteraction(controller);
+        }
+
+        private void OnStartInteractionMessage(Message msg)
+        {
+            Block block = msg.GetData(0) as Block;
+            Block block2 = msg.GetData(1) as Block;
+            Controller controller = block.BlockScript as Controller;
+            Interactable interactable = block2.BlockScript as Interactable;
+            if (controller?.Machine.Player == msg.Sender)
+                interactable?.StartInteraction(controller);
+        }
+
+        private void OnJumpMessage(Message msg)
+        {
+            Block block = msg.GetData(0) as Block;
+            Controller controller = block.BlockScript as Controller;
+            controller?.Jump();
+        }
+
+        private void OnControllerMessage(Message msg)
+        {
+            Block block = msg.GetData(0) as Block;
+            Controller controller = block.BlockScript as Controller;
+            Vector3 direction = (Vector3)msg.GetData(1);
+            Vector3 rotation = (Vector3)msg.GetData(2);
+            if (controller != null)
+            {
                 controller.inputDirection = direction;
                 controller.inputRotation = rotation;
-            }
-
-            if (msg.Type == Jump)
-            {
-                Block block = msg.GetData(0) as Block;
-                Controller controller = block.BlockScript as Controller;
-                controller.Jump();
-            }
-
-            if (msg.Type == StartInteraction)
-            {
-                Block block = msg.GetData(0) as Block;
-                Interactable interactable = block.BlockScript as Interactable;
-                interactable.StartInteraction();
-            }
-
-            if (msg.Type == StopInteraction)
-            {
-                Block block = msg.GetData(0) as Block;
-                Interactable interactable = block.BlockScript as Interactable;
-                interactable.StopInteraction();
             }
         }
     }

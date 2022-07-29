@@ -21,11 +21,11 @@ namespace FPSController
             hint = DoubleSpace(label.Value);
         }
 
-        public virtual void StartInteraction()
+        public virtual void StartInteraction(Controller controller)
         {
 
         }
-        public virtual void StopInteraction()
+        public virtual void StopInteraction(Controller controller)
         {
 
         }
