@@ -8,6 +8,7 @@ namespace FPSController
 {
 	public class Mod : ModEntryPoint
     {
+        // camera block
         public static MessageType SetControllerDirectionRotation;
         public static MessageType Jump;
         public static MessageType StartInteraction;
@@ -22,9 +23,6 @@ namespace FPSController
 
         public static GUIStyle InfoText;
         public static GUIStyle InfoTextShadow;
-
-        public static Mesh CharacterMesh;
-        public static Material CharacterMaterial;
 
         public static PhysicMaterial LowFriction;
 
@@ -66,11 +64,6 @@ namespace FPSController
 
             InfoTextShadow = new GUIStyle(InfoText);
             InfoTextShadow.normal.textColor = Color.black;
-
-            GameObject peasant = GameObject.Find("_PERSISTENT/OBJECTS/Prefabs/Humans/PeasantV2");
-
-            CharacterMesh = peasant.GetComponentInChildren<MeshFilter>().mesh;
-            CharacterMaterial = peasant.GetComponentInChildren<MeshRenderer>().sharedMaterial;
 
             LowFriction = new PhysicMaterial()
             {
