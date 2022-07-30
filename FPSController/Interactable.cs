@@ -32,7 +32,7 @@ namespace FPSController
 
         }
 
-        private static string DoubleSpace(string s)
+        private static string DoubleSpace(string s) 
         {
             if (string.IsNullOrEmpty(s))
             {

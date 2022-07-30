@@ -336,7 +336,8 @@ namespace FPSController
                     groundVelocity = seat.Rigidbody.velocity;
                     const float seatApproachSpeed = 16;
                     goalVel = groundVelocity + Vector3.ClampMagnitude(seat.transform.position + seat.transform.forward * 1.75F - transform.position, 1) * seatApproachSpeed;
-                } else
+                }
+                else
                 {
                     goalVel = groundVelocity + Vector3.Scale(inputDirection, new Vector3(1, 0, 1)) * speed.Value;
                 }
@@ -349,23 +350,36 @@ namespace FPSController
 
                 Rigidbody.AddForce(Vector3.Scale(neededAccel, new Vector3(1, IsSitting ? 1 : 0, 1)) * Rigidbody.mass);
 
-                Vector3 rotation = inputRotation;
+                Quaternion target = GetBodyRotation(inputRotation);
 
-                if (rotation.x > 180)
-                    rotation.x -= 360;
-                if (rotation.z > 180)
-                    rotation.z -= 360;
+                const float maxRotationDelta = 10F;
 
-                Quaternion target = Quaternion.Euler(
-                    Mathf.Clamp(rotation.x, -pitchLimits.Max, pitchLimits.Min),
-                    rotation.y,
-                    0) 
-                    * Quaternion.AngleAxis(90, -Vector3.right)
-                    * Quaternion.AngleAxis(rotation.z, -Vector3.up); // Working quaternion nonsense.
+                float rotationDelta = Quaternion.Angle(Rigidbody.rotation, target);
 
-                const float maxRotationDelta = 10;
-                Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
+                if (rotationDelta < maxRotationDelta)
+                    Rigidbody.rotation = Quaternion.Lerp(Rigidbody.rotation, target, 0.5F);
+                else
+                    Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
             }
+        }
+
+        private Quaternion GetBodyRotation(Vector3 inputRotation)
+        {
+            Vector3 rotation = inputRotation;
+
+            if (rotation.x > 180)
+                rotation.x -= 360;
+            if (rotation.z > 180)
+                rotation.z -= 360;
+
+            Quaternion target = Quaternion.Euler(
+                Mathf.Clamp(rotation.x, -pitchLimits.Max, pitchLimits.Min),
+                rotation.y,
+                0)
+                * Quaternion.AngleAxis(90, -Vector3.right)
+                * Quaternion.AngleAxis(rotation.z, -Vector3.up); // Working quaternion nonsense.
+
+            return target;
         }
 
         public void SetControlling(bool value)
