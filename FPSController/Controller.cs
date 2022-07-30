@@ -35,6 +35,8 @@ namespace FPSController
 
         public MLimits pitchLimits;
 
+        public MToggle alwaysLabel;
+
         public Interactable lookingAt;
         public Interactable interactingWith;
 
@@ -80,7 +82,10 @@ namespace FPSController
         private float _oldFov;
         private float _oldNearClip;
         private long _localTicksCount = 0;
-        private Vector3 _lastViewRotation;
+        private Quaternion _finalRotation;
+        private Quaternion _lastSittingRotation;
+        private Quaternion _lookRotation;
+        private Quaternion _lastLookRotation;
 
         private void Start()
         {
@@ -104,6 +109,7 @@ namespace FPSController
             jump = AddKey("Jump", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
+            alwaysLabel = AddToggle("Attach Label", "always-label", true);
             pitchLimits.UseLimitsToggle.DisplayInMapper = false;
             
             _oldFov = MainCamera.fieldOfView;
@@ -141,7 +147,17 @@ namespace FPSController
         {
             rotationX = targetRotationX = transform.eulerAngles.y;
             rotationY = targetRotationY = 0;
-            _lastViewRotation = inputRotation = GetLookRotation(rotationX, rotationY).eulerAngles;
+            inputRotation = GetLookRotation(rotationX, rotationY).eulerAngles;
+        }
+
+        public override void SimulateLateUpdateAlways()
+        {
+            if (alwaysLabel.IsActive)
+            {
+                LocalMachine machine = Machine.InternalObject;
+                machine.OnAnalysisReset(); // Resets ONLY center preventing machine from overriding controller's value.
+                machine.SetMachineCenter(transform.position + Vector3.up * (-machine.Size.y - 1F));
+            }
         }
 
         public override void SimulateUpdateAlways()
@@ -155,24 +171,6 @@ namespace FPSController
 
                 if (IsFixedCameraActive && controlling)
                     SetControlling(false);
-
-                if (IsSitting)
-                    foreach (var key in Seat.EmulatableKeys)
-                    {
-                        if (HasAuthority)
-                        {
-                            if (Input.GetKeyDown(key))
-                                SetSeatKey(key, true);
-                            if (Input.GetKeyUp(key))
-                                SetSeatKey(key, false);
-                        } else
-                        {
-                            if (Input.GetKeyDown(key))
-                                ModNetworking.SendToHost(Mod.SeatKeyPress.CreateMessage(Block.From(BlockBehaviour), (int)key));
-                            if (Input.GetKeyUp(key))
-                                ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
-                        }
-                    }
 
                 float targetVertical = 0;
                 float targetHorizontal = 0;
@@ -203,17 +201,39 @@ namespace FPSController
                     rotationX = Mathf.Lerp(rotationX, targetRotationX, smoothing.Value * Time.unscaledDeltaTime);
                     rotationY = Mathf.Lerp(rotationY, targetRotationY, smoothing.Value * Time.unscaledDeltaTime);
 
-                    Quaternion lookRotation = GetLookRotation(rotationX, rotationY);
-                    Quaternion finalRotation;
+                    _lookRotation = GetLookRotation(rotationX, rotationY);
+                }
+
+                if (IsSitting)
+                {
+                    Quaternion pitchOffset = Quaternion.AngleAxis(-90, -Vector3.right);
+                    _lastSittingRotation = _finalRotation = seat.transform.rotation * pitchOffset * _lookRotation;
+                }
+                else
+                    _lastLookRotation = _finalRotation = _lookRotation;
+
+                if (controlling) 
+                {
+                    MainCamera.transform.rotation = _finalRotation;
 
                     if (IsSitting)
-                    {
-                        Quaternion pitchOffset = Quaternion.AngleAxis(-90, -Vector3.right);
-                        finalRotation = seat.transform.rotation * pitchOffset * lookRotation;
-                    } else
-                        finalRotation = lookRotation;
-
-                    MainCamera.transform.rotation = finalRotation;
+                        foreach (var key in Seat.EmulatableKeys)
+                        {
+                            if (HasAuthority)
+                            {
+                                if (Input.GetKeyDown(key))
+                                    SetSeatKey(key, true);
+                                if (Input.GetKeyUp(key))
+                                    SetSeatKey(key, false);
+                            }
+                            else
+                            {
+                                if (Input.GetKeyDown(key))
+                                    ModNetworking.SendToHost(Mod.SeatKeyPress.CreateMessage(Block.From(BlockBehaviour), (int)key));
+                                if (Input.GetKeyUp(key))
+                                    ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
+                            }
+                        }
 
                     if (jump.IsPressed)
                         if (HasAuthority)
@@ -251,10 +271,8 @@ namespace FPSController
 
                     Vector3 cameraPosition;
 
-                    const float height = 1.75F;
-
                     if (IsSitting)
-                        cameraPosition = seat.transform.position + seat.transform.forward * height;
+                        cameraPosition = seat.transform.position + seat.transform.forward * seat.EyesHeight;
                     else
                         cameraPosition = transform.position + transform.forward * 0.25F;
 
@@ -325,14 +343,11 @@ namespace FPSController
                     MouseOrbit.Instance.camUp = MainCamera.transform.up;
 
                     inputDirection = Vector3.ProjectOnPlane(MainCamera.transform.forward, Vector3.up).normalized * vertical + MainCamera.transform.right * horizontal;
-                    inputRotation = MainCamera.transform.eulerAngles;
-                    _lastViewRotation = inputRotation;
                 }
                 else
-                {
                     inputDirection = Vector3.zero;
-                    inputRotation = _lastViewRotation;
-                }
+
+                inputRotation = _finalRotation.eulerAngles;
 
                 if (!HasAuthority && _localTicksCount % 5 == 0)
                 {
@@ -423,10 +438,27 @@ namespace FPSController
 
             meshRenderer.shadowCastingMode = 
                 value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
+
+            if (IsSitting && !controlling)
+                foreach (var key in Seat.EmulatableKeys)
+                {
+                    if (HasAuthority)
+                        SetSeatKey(key, false);
+                    else
+                        ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
+                }
         }
 
         public void SetSeat(Seat seat)
         {
+            if (seat == null)
+                rotationX = targetRotationX = _lastSittingRotation.eulerAngles.y;
+            else
+            {
+                Quaternion pitchOffset = Quaternion.AngleAxis(-90, -Vector3.right); // TODO: Repeated code.
+                rotationX = targetRotationX = (_lastLookRotation * Quaternion.Inverse(seat.transform.rotation * pitchOffset)).eulerAngles.y;
+            }
+
             this.seat?.SetFree();
             this.seat = seat;
 

@@ -8,6 +8,9 @@ namespace FPSController
 {
 	public class Mod : ModEntryPoint
     {
+        // TODO: Fix local simulation non-lethal errors.
+        // Fix mountain friction.
+
         public static MessageType SetControllerInput;
         public static MessageType Jump;
         public static MessageType RequestStartInteraction;
@@ -79,8 +82,9 @@ namespace FPSController
 
             NoFriction = new PhysicMaterial()
             {
+                frictionCombine = PhysicMaterialCombine.Minimum,   
                 dynamicFriction = 0,
-                staticFriction = 0
+                staticFriction = 0,
             };
 
             NoKeys = new MKey[0];
@@ -199,11 +203,11 @@ namespace FPSController
 
         private void OnControllerMessage(Message msg)
         {
+            Block block = (Block)msg.GetData(0);
+            Controller controller = (Controller)block?.BlockScript;
+
             Vector3 direction = (Vector3)msg.GetData(1);
             Vector3 rotation = (Vector3)msg.GetData(2);
-
-            Block block = (Block)msg.GetData(0);
-            Controller controller = (Controller)block.BlockScript;
 
             if (controller?.Machine.Player == msg.Sender)
                 if (controller != null)

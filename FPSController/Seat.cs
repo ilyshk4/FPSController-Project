@@ -10,7 +10,7 @@ namespace FPSController
     {
         public static readonly KeyCode[] EmulatableKeys = new KeyCode[]
         {
-            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D, KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.T, KeyCode.F, KeyCode.G, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3
+            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D, KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.T, KeyCode.F, KeyCode.G, KeyCode.LeftShift, KeyCode.LeftControl, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3
         };
 
         public class RemoteKey
@@ -19,11 +19,13 @@ namespace FPSController
             public bool state, previousState;
         }
 
+        public MSlider eyesHeight;
         public MKey emulateKey;
         public Dictionary<KeyCode, RemoteKey> remoteKeys;
 
         public override bool EmulatesAnyKeys => true;
         public bool Occupied => User != null;
+        public float EyesHeight => eyesHeight.Value;
 
         private bool _previousOccupied;
 
@@ -31,7 +33,8 @@ namespace FPSController
         {
             base.SafeAwake();
 
-            emulateKey = AddEmulatorKey("Occupied", "occupied", KeyCode.F);
+            eyesHeight = AddSlider("Eyes Height", "eyes-height", 1.75F, 0, 2.5F);
+            emulateKey = AddEmulatorKey("Occupied", "occupied", KeyCode.None);
 
             remoteKeys = new Dictionary<KeyCode, RemoteKey>();
 
