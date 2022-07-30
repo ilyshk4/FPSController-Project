@@ -13,8 +13,9 @@ namespace FPSController
 
         public Vector3 inputDirection = Vector3.forward;
         public Vector3 inputRotation = Vector3.zero;
+
         public float rotationX, rotationY;
-        public float t_rotationX, t_rotationY;
+        public float targetRotationX, targetRotationY;
 
         public MSlider fov;
         public MSlider speed;
@@ -40,16 +41,17 @@ namespace FPSController
 
         public Seat seat;
 
+        public bool controlling;
+
         public float vertical, horizontal;
 
-        public bool controlling;
         public bool IsSitting => seat != null;
         public bool IsLocal => Machine.InternalObject == LocalMachine.Active() || !StatMaster.isMP;
-        public bool IsServer => StatMaster.isHosting || !StatMaster.isMP || StatMaster.isLocalSim;
+        public bool HasAuthority => Mod.HasAuthority;
         public bool IsFixedCameraActive => FixedCameraController.Instance.activeCamera;
 
         private Camera _viewCamera;
-        public Camera ViewCamera
+        public Camera MainCamera
         {
             get
             {
@@ -76,15 +78,13 @@ namespace FPSController
 
         private float _oldFov;
         private float _oldNearClip;
-        private Vector3 _lastNonZeroRotation = Vector3.forward;
-        private Vector3 _originalRotation;
-        private long _send = 0;
+        private long _localTicksCount = 0;
+        private Vector3 _lastViewRotation;
 
         private void Start()
         {
             foreach (var joint in GetComponents<Joint>())
                 Destroy(joint);
-            _originalRotation = transform.eulerAngles;
         }
 
         public override void SafeAwake()
@@ -104,8 +104,9 @@ namespace FPSController
             interact = AddKey("Interact", "interact", KeyCode.E);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
             pitchLimits.UseLimitsToggle.DisplayInMapper = false;
-            _oldFov = ViewCamera.fieldOfView;
-            _oldNearClip = ViewCamera.nearClipPlane;
+            
+            _oldFov = MainCamera.fieldOfView;
+            _oldNearClip = MainCamera.nearClipPlane;
 
             meshRenderer = GetComponentInChildren<MeshRenderer>();
 
@@ -122,7 +123,7 @@ namespace FPSController
                 top = topObj.AddComponent<SphereCollider>();
                 top.radius = 0.5F;
                 top.center = new Vector3(0, 0, 0);
-                top.sharedMaterial = Mod.LowFriction;
+                top.sharedMaterial = Mod.NoFriction;
 
                 GameObject bottomObj = new GameObject("Bottom");
                 bottomObj.transform.parent = transform;
@@ -131,17 +132,15 @@ namespace FPSController
                 bottom = bottomObj.AddComponent<SphereCollider>();
                 bottom.radius = 0.5F;
                 bottom.center = new Vector3(0, -1F, 0);
-                bottom.sharedMaterial = Mod.LowFriction;
+                bottom.sharedMaterial = Mod.NoFriction;
             }
         }
 
         public override void OnSimulateStart()
         {
-            rotationX = t_rotationX = transform.eulerAngles.y;
-            rotationY = t_rotationY = 0;
-            Quaternion xQuaternion = Quaternion.AngleAxis(rotationX, Vector3.up);
-            Quaternion yQuaternion = Quaternion.AngleAxis(rotationY, -Vector3.right);
-            _lastNonZeroRotation = inputRotation = (xQuaternion * yQuaternion).eulerAngles;
+            rotationX = targetRotationX = transform.eulerAngles.y;
+            rotationY = targetRotationY = 0;
+            _lastViewRotation = inputRotation = GetLookRotation(rotationX, rotationY).eulerAngles;
         }
 
         public override void SimulateUpdateAlways()
@@ -156,60 +155,58 @@ namespace FPSController
                 if (IsFixedCameraActive && controlling)
                     SetControlling(false);
 
-                const float inputStepScale = 4;
-
-                float t_vertical = 0;
-                float t_horizontal = 0;
+                float targetVertical = 0;
+                float targetHorizontal = 0;
 
                 if (controlling)
                 {
                     if (Input.GetKey(KeyCode.W))
-                        t_vertical += 1;
+                        targetVertical += 1;
                     if (Input.GetKey(KeyCode.S))
-                        t_vertical -= 1;
+                        targetVertical -= 1;
                     if (Input.GetKey(KeyCode.D))
-                        t_horizontal += 1;
+                        targetHorizontal += 1;
                     if (Input.GetKey(KeyCode.A))
-                        t_horizontal -= 1;
+                        targetHorizontal -= 1;
                 }
 
-                vertical = Mathf.MoveTowards(vertical, t_vertical, Time.unscaledDeltaTime * inputStepScale);
-                horizontal = Mathf.MoveTowards(horizontal, t_horizontal, Time.unscaledDeltaTime * inputStepScale);
+                const float inputMaxDeltaScale = 4;
+                vertical = Mathf.MoveTowards(vertical, targetVertical, Time.unscaledDeltaTime * inputMaxDeltaScale);
+                horizontal = Mathf.MoveTowards(horizontal, targetHorizontal, Time.unscaledDeltaTime * inputMaxDeltaScale);
 
                 if (controlling)
                 {
-                    t_rotationX += Input.GetAxis("Mouse X") * sensitivity.Value * 0.016667F;
-                    t_rotationY += Input.GetAxis("Mouse Y") * sensitivity.Value * 0.016667F;
-                    t_rotationY = ClampAngle(t_rotationY, -85F, 85F);
-                    rotationX = Mathf.Lerp(rotationX, t_rotationX, smoothing.Value * Time.unscaledDeltaTime);
-                    rotationY = Mathf.Lerp(rotationY, t_rotationY, smoothing.Value * Time.unscaledDeltaTime);
+                    const float oldVersionScale = 1F / 60F;
+                    targetRotationX += Input.GetAxis("Mouse X") * sensitivity.Value * oldVersionScale;
+                    targetRotationY += Input.GetAxis("Mouse Y") * sensitivity.Value * oldVersionScale;
+                    targetRotationY = ClampAngle(targetRotationY, -85F, 85F);
 
-                    Quaternion xQuaternion = Quaternion.AngleAxis(rotationX, Vector3.up);
-                    Quaternion yQuaternion = Quaternion.AngleAxis(rotationY, -Vector3.right);
-                    ViewCamera.transform.rotation = xQuaternion * yQuaternion;
+                    rotationX = Mathf.Lerp(rotationX, targetRotationX, smoothing.Value * Time.unscaledDeltaTime);
+                    rotationY = Mathf.Lerp(rotationY, targetRotationY, smoothing.Value * Time.unscaledDeltaTime);
+
+                    Quaternion lookRotation = GetLookRotation(rotationX, rotationY);
+                    Quaternion finalRotation;
 
                     if (IsSitting)
                     {
-                        Quaternion offset = Quaternion.AngleAxis(-90, -Vector3.right);
-                        ViewCamera.transform.rotation = seat.transform.rotation * offset * xQuaternion * yQuaternion;
+                        Quaternion pitchOffset = Quaternion.AngleAxis(-90, -Vector3.right);
+                        finalRotation = seat.transform.rotation * pitchOffset * lookRotation;
                     } else
-                    {
-                        ViewCamera.transform.rotation = xQuaternion * yQuaternion;
-                    }
+                        finalRotation = lookRotation;
+
+                    MainCamera.transform.rotation = finalRotation;
 
                     if (jump.IsPressed)
-                        if (IsServer)
+                        if (HasAuthority)
                             Jump();
                         else
-                            ModNetworking.SendToAll(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
+                            ModNetworking.SendToHost(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
 
-                    if (Physics.Raycast(ViewCamera.transform.position, ViewCamera.transform.forward, out RaycastHit hit, interactDistance.Value, Game.BlockEntityLayerMask))
+                    if (Physics.Raycast(MainCamera.transform.position, MainCamera.transform.forward, out RaycastHit hit, interactDistance.Value, Game.BlockEntityLayerMask))
                     {
                         Interactable hitInteractable = hit.transform.GetComponent<Interactable>();
-                        if (hitInteractable != null)
+                        if (hitInteractable != null && hitInteractable.IsSimulating)
                             lookingAt = hitInteractable;
-                        else
-                            lookingAt = null;
                     }
 
                     if (lookingAt != null)
@@ -233,7 +230,17 @@ namespace FPSController
                         interactingWith = null;
                     }
 
-                    ViewCamera.transform.position = transform.position + transform.forward * 0.25F;
+                    Vector3 cameraPosition;
+
+                    const float height = 1.75F;
+
+                    if (IsSitting)
+                        cameraPosition = seat.transform.position + seat.transform.forward * height;
+                    else
+                        cameraPosition = transform.position + transform.forward * 0.25F;
+
+                    MainCamera.transform.position = cameraPosition;
+
                     Cursor.visible = false;
                 }
 
@@ -245,49 +252,73 @@ namespace FPSController
             }
         }
 
+        public void TryStartInteraction(Interactable interactable)
+        {
+            if (interactable.User == null && interactable.IsSimulating)
+            {
+                interactable.StartInteraction(this);
+                ModNetworking.SendToAll(Mod.RemoteStartInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
+            }
+        }
+
+        public void TryStopInteraction(Interactable interactable)
+        {
+            if (interactable.User == this && interactable.IsSimulating)
+            {
+                interactable.StopInteraction();
+                ModNetworking.SendToAll(Mod.RemoteStopInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
+            }
+        }
+
         public void StartInteraction(Interactable interactable)
         {
-            interactable.StartInteraction(this);
-            ModNetworking.SendToAll(Mod.StartInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
+            if (HasAuthority)
+                TryStartInteraction(interactable);
+            else
+                ModNetworking.SendToHost(Mod.RequestStartInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
         }
 
         public void StopInteraction(Interactable interactable)
         {
-            interactable.StopInteraction(this);
-            ModNetworking.SendToAll(Mod.StopInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
+            if (HasAuthority)
+                TryStopInteraction(interactable);
+            else
+                ModNetworking.SendToHost(Mod.RequestStopInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
         }
 
         private void FixedUpdate()
         {
             bottom.gameObject.transform.eulerAngles = Vector3.zero;
 
-            if (inputRotation != Vector3.zero)
-                _lastNonZeroRotation = inputRotation;
-             
             if (IsLocal)
             {
                 if (controlling)
                 {
-                    MouseOrbit.Instance.camForward = ViewCamera.transform.forward;
-                    MouseOrbit.Instance.camUp = ViewCamera.transform.up;
+                    MouseOrbit.Instance.camForward = MainCamera.transform.forward;
+                    MouseOrbit.Instance.camUp = MainCamera.transform.up;
 
-                    inputDirection = Vector3.ProjectOnPlane(ViewCamera.transform.forward, Vector3.up).normalized * vertical + ViewCamera.transform.right * horizontal;
-                    inputRotation = ViewCamera.transform.eulerAngles;
+                    inputDirection = Vector3.ProjectOnPlane(MainCamera.transform.forward, Vector3.up).normalized * vertical + MainCamera.transform.right * horizontal;
+                    inputRotation = MainCamera.transform.eulerAngles;
+                    _lastViewRotation = inputRotation;
                 }
                 else
-                    inputDirection = inputRotation = Vector3.zero;
-                _send++;
-                if (!IsServer && _send % 5 == 0)
                 {
-                    Message directionMessage = Mod.SetControllerDirectionRotation.CreateMessage(Block.From(BlockBehaviour), inputDirection, inputRotation);
-                    ModNetworking.SendToHost(directionMessage);
-                } 
+                    inputDirection = Vector3.zero;
+                    inputRotation = _lastViewRotation;
+                }
+
+                if (!HasAuthority && _localTicksCount % 5 == 0)
+                {
+                    Message inputMessage = Mod.SetControllerInput.CreateMessage(Block.From(BlockBehaviour), inputDirection, inputRotation);
+                    ModNetworking.SendToHost(inputMessage);
+                }
+                _localTicksCount++;
             }
 
-            if (IsServer && IsSimulating)
+            if (HasAuthority && IsSimulating)
             {
                 Rigidbody.constraints = RigidbodyConstraints.FreezeRotation;
-                Rigidbody.angularDrag = 10;
+                Rigidbody.angularDrag = 16;
                 Rigidbody.drag = 0;
                 Rigidbody.mass = mass.Value;
 
@@ -297,12 +328,17 @@ namespace FPSController
                 Vector3 bodyVelocity = Rigidbody.velocity;
 
                 inputDirection = Vector3.ClampMagnitude(inputDirection, 1);
-                Vector3 goalVel = groundVelocity + Vector3.Scale(inputDirection, new Vector3(1, 0, 1)) * speed.Value;
+
+                Vector3 goalVel;
 
                 if (IsSitting)
                 {
                     groundVelocity = seat.Rigidbody.velocity;
-                    goalVel = groundVelocity + Vector3.ClampMagnitude(seat.transform.position + seat.transform.forward * 1.75F - transform.position, 1) * 16;
+                    const float seatApproachSpeed = 16;
+                    goalVel = groundVelocity + Vector3.ClampMagnitude(seat.transform.position + seat.transform.forward * 1.75F - transform.position, 1) * seatApproachSpeed;
+                } else
+                {
+                    goalVel = groundVelocity + Vector3.Scale(inputDirection, new Vector3(1, 0, 1)) * speed.Value;
                 }
 
                 goalVel = Vector3.MoveTowards(goalVel, goalVel + bodyVelocity, timestep);
@@ -313,20 +349,22 @@ namespace FPSController
 
                 Rigidbody.AddForce(Vector3.Scale(neededAccel, new Vector3(1, IsSitting ? 1 : 0, 1)) * Rigidbody.mass);
 
-                if (_lastNonZeroRotation.x > 180)
-                    _lastNonZeroRotation.x = _lastNonZeroRotation.x - 360;
-                if (_lastNonZeroRotation.z > 180)
-                    _lastNonZeroRotation.z = _lastNonZeroRotation.z - 360;
-                const float maxRotationDelta = 10;
+                Vector3 rotation = inputRotation;
 
-                Debug.Log(_lastNonZeroRotation);
+                if (rotation.x > 180)
+                    rotation.x -= 360;
+                if (rotation.z > 180)
+                    rotation.z -= 360;
+
                 Quaternion target = Quaternion.Euler(
-                    _originalRotation.x + Mathf.Clamp(_lastNonZeroRotation.x, -pitchLimits.Max, pitchLimits.Min), // remove original rotation
-                    _lastNonZeroRotation.y, 
-                    _originalRotation.z) * Quaternion.AngleAxis(_lastNonZeroRotation.z, -Vector3.up);
-                    
-                Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
+                    Mathf.Clamp(rotation.x, -pitchLimits.Max, pitchLimits.Min),
+                    rotation.y,
+                    0) 
+                    * Quaternion.AngleAxis(90, -Vector3.right)
+                    * Quaternion.AngleAxis(rotation.z, -Vector3.up); // Working quaternion nonsense.
 
+                const float maxRotationDelta = 10;
+                Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
             }
         }
 
@@ -336,25 +374,33 @@ namespace FPSController
 
             Cursor.visible = !value;
             Cursor.lockState = value ? CursorLockMode.Locked : CursorLockMode.None;
-            ViewCamera.fieldOfView = HUDCamera.fieldOfView = value ? fov.Value : _oldFov;
-            ViewCamera.nearClipPlane = HUDCamera.nearClipPlane = value ? 0.05F : _oldNearClip;
+
             MouseOrbit.Instance.isActive = !value;
-            meshRenderer.shadowCastingMode = value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
+
+            MainCamera.fieldOfView = HUDCamera.fieldOfView = value ? fov.Value : _oldFov;
+            MainCamera.nearClipPlane = HUDCamera.nearClipPlane = value ? 0.05F : _oldNearClip;
+
+            meshRenderer.shadowCastingMode = 
+                value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
         }
 
-        public void SetSitting(Seat other)
+        public void SetSeat(Seat seat)
         {
-            if (seat != null)
-                seat.passenger = null;
-            seat = other;
+            this.seat?.SetFree();
+            this.seat = seat;
 
-            top.enabled = bottom.enabled = !IsSitting;
-            if (IsServer)
+            if (HasAuthority)
+            {
+                top.enabled = bottom.enabled = !IsSitting;
                 Rigidbody.useGravity = !IsSitting;
+            }
         }
 
         public override void OnSimulateStop()
         {
+            if (IsSitting)
+                SetSeat(null);
+
             if (controlling)
                 SetControlling(false);
         }
@@ -365,7 +411,6 @@ namespace FPSController
             {
                 GUI.DrawTexture(new Rect(Screen.width / 2 - Mod.Crosshair.width / 2, Screen.height / 2 - Mod.Crosshair.height, Mod.Crosshair.width, Mod.Crosshair.height), Mod.Crosshair);
                 
-
                 if (lookingAt != null && lookingAt.label.Value.Length > 0)
                 {
                     float left = Screen.width / 2 - 75;
@@ -388,21 +433,29 @@ namespace FPSController
 
         public void Jump()
         {
-            int layerMask = Game.BlockEntityLayerMask | 1 | 1 << 29;
+            if (HasAuthority)
+            {
+                const int defaultLayer = 1;
+                const int floorLayer = 1 << 29;
+                int layerMask = Game.BlockEntityLayerMask | defaultLayer | floorLayer;
+
+                if (!IsSitting)
+                    if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, layerMask))
+                        Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
+
+                ModNetworking.SendToAll(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
+            }
 
             if (IsSitting)
-                SetSitting(null);
-
-            if (IsServer)
-                if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, layerMask))
-                    Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
+                SetSeat(null);
         }
+
 
         public Vector3 GetGroundVelocitySpread()
         {
             float downScale = Mathf.Min(Mathf.Tan(groundStickSpread.Value), 100);
             Vector3 velocity = Vector3.zero;
-            velocity = GetGroundVelocity(Vector3.down);
+            velocity = GetGroundVelocity(Vector3.down * downScale);
             if (velocity != Vector3.zero)
                 return velocity;
             velocity = GetGroundVelocity(Vector3.down * downScale + Vector3.right);
@@ -438,6 +491,13 @@ namespace FPSController
                 if (hit.rigidbody != null && hit.rigidbody.GetComponent<Controller>() == null)
                     return hit.rigidbody.velocity;
             return Vector3.zero;
+        }
+
+        public static Quaternion GetLookRotation(float x, float y)
+        {
+            Quaternion xQuaternion = Quaternion.AngleAxis(x, Vector3.up);
+            Quaternion yQuaternion = Quaternion.AngleAxis(y, -Vector3.right);
+            return xQuaternion * yQuaternion;
         }
     }
 }

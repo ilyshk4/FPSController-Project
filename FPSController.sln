@@ -1,8 +1,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio 15
-VisualStudioVersion = 15.0.27130.2036
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.32228.343
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8eb3d8cd-5af4-41a8-80bd-deb19e838d2a}") = "FPSController", "FPSController\FPSController.csproj", "{c0c9e182-1bc5-40d4-8bc1-bcfbd05de848}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FPSController", "FPSController\FPSController.csproj", "{C0C9E182-1BC5-40D4-8BC1-BCFBD05DE848}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -10,10 +10,10 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{c0c9e182-1bc5-40d4-8bc1-bcfbd05de848}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{c0c9e182-1bc5-40d4-8bc1-bcfbd05de848}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{c0c9e182-1bc5-40d4-8bc1-bcfbd05de848}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{c0c9e182-1bc5-40d4-8bc1-bcfbd05de848}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0C9E182-1BC5-40D4-8BC1-BCFBD05DE848}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0C9E182-1BC5-40D4-8BC1-BCFBD05DE848}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0C9E182-1BC5-40D4-8BC1-BCFBD05DE848}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0C9E182-1BC5-40D4-8BC1-BCFBD05DE848}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

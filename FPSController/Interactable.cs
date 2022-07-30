@@ -10,6 +10,7 @@ namespace FPSController
     {
         public MText label;
         public string hint;
+        public Controller User { get; protected set; }
 
         public override void SafeAwake()
         {
@@ -25,12 +26,13 @@ namespace FPSController
         {
 
         }
-        public virtual void StopInteraction(Controller controller)
+
+        public virtual void StopInteraction()
         {
 
         }
 
-        public static string DoubleSpace(string s)
+        private static string DoubleSpace(string s)
         {
             if (string.IsNullOrEmpty(s))
             {
@@ -45,7 +47,6 @@ namespace FPSController
             {
                 b[bIndex++] = a[i];
 
-                //Insert a white space after the char
                 if (i < (a.Length - 1))
                 {
                     b[bIndex++] = ' ';

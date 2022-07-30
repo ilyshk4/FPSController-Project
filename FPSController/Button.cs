@@ -8,6 +8,8 @@ namespace FPSController
 {
     public class Button : Interactable
     {
+        public override bool EmulatesAnyKeys => true;
+
         public GameObject top;
 
         public MKey emulateKey;
@@ -16,20 +18,14 @@ namespace FPSController
 
         public MeshRenderer topRenderer;
 
-        public Controller interactor;
-
-        private MKey[] activationKeys = new MKey[0];
-        private bool prevIsHeld;
-
         public bool isHeld;
 
-        public override bool EmulatesAnyKeys => true;
-
-        public bool IsServer => StatMaster.isHosting || !StatMaster.isMP || StatMaster.isLocalSim;
+        private bool _previousIsHeld;
 
         public override void SafeAwake()
         {
             base.SafeAwake();
+
             emulateKey = AddEmulatorKey("On Pressed", "on-pressed", KeyCode.C);
             color = AddColourSlider("Color", "color", Color.white, false);
             toggleMode = AddToggle("Toggle", "toggle", false);
@@ -83,29 +79,27 @@ namespace FPSController
             {
                 isHeld = !isHeld;
             }
-            else if (interactor == null && !isHeld)
+            else
             {
-                interactor = controller;
+                User = controller;
                 isHeld = true;
             }
         }
 
-        public override void StopInteraction(Controller controller)
+        public override void StopInteraction()
         {
-            if (controller != interactor)
+            if (toggleMode.IsActive)
                 return;
-            if (!isHeld)
-                return;
-            interactor = null;
+            User = null;
             isHeld = false;
         }
 
         public override void SendKeyEmulationUpdateHost()
         {
-            if (prevIsHeld != isHeld)
+            if (_previousIsHeld != isHeld)
             {
-                prevIsHeld = isHeld;
-                EmulateKeys(activationKeys, emulateKey, isHeld);
+                _previousIsHeld = isHeld;
+                EmulateKeys(Mod.NoKeys, emulateKey, isHeld);
             }
         }
     }

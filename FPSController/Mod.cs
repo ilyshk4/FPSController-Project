@@ -9,11 +9,12 @@ namespace FPSController
 	public class Mod : ModEntryPoint
     {
         // camera block
-        public static MessageType SetControllerDirectionRotation;
+        public static MessageType SetControllerInput;
         public static MessageType Jump;
-        public static MessageType StartInteraction;
-        public static MessageType StopInteraction;
-        public static PhysicMaterial maxFriction;
+        public static MessageType RequestStartInteraction;
+        public static MessageType RequestStopInteraction;
+        public static MessageType RemoteStartInteraction;
+        public static MessageType RemoteStopInteraction;
 
         public static Mesh ButtonBase, ButtonTop;
 
@@ -24,14 +25,21 @@ namespace FPSController
         public static GUIStyle InfoText;
         public static GUIStyle InfoTextShadow;
 
-        public static PhysicMaterial LowFriction;
+        public static PhysicMaterial NoFriction;
+
+        public static MKey[] NoKeys;
+
+        public static bool HasAuthority => StatMaster.isHosting || !StatMaster.isMP || StatMaster.isLocalSim;
 
         public override void OnLoad()
 		{
-            SetControllerDirectionRotation = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3);
+            SetControllerInput = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3);
             Jump = ModNetworking.CreateMessageType(DataType.Block);
-            StartInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
-            StopInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
+
+            RequestStartInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
+            RequestStopInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
+            RemoteStartInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
+            RemoteStopInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
 
             ModNetworking.MessageReceived += OnMessageReceived;
 
@@ -65,68 +73,105 @@ namespace FPSController
             InfoTextShadow = new GUIStyle(InfoText);
             InfoTextShadow.normal.textColor = Color.black;
 
-            LowFriction = new PhysicMaterial()
+            NoFriction = new PhysicMaterial()
             {
                 dynamicFriction = 0,
                 staticFriction = 0
             };
+
+            NoKeys = new MKey[0];
         }
 
         private void OnMessageReceived(Message msg)
         {
             try
             {
-                if (msg.Type == SetControllerDirectionRotation)
+                if (msg.Type == SetControllerInput)
                     OnControllerMessage(msg);
 
                 if (msg.Type == Jump)
                     OnJumpMessage(msg);
 
-                if (msg.Type == StartInteraction)
-                    OnStartInteractionMessage(msg);
+                if (msg.Type == RequestStartInteraction)
+                    OnRequestStartInteraction(msg);
 
-                if (msg.Type == StopInteraction)
-                    OnStopInteractionMessage(msg);
-            } catch
+                if (msg.Type == RequestStopInteraction)
+                    OnRequestStopInteraction(msg);
+
+                if (msg.Type == RemoteStartInteraction)
+                    OnRemoteStartInteraction(msg);
+
+                if (msg.Type == RemoteStopInteraction)
+                    OnRemoteStopInteraction(msg);
+            } catch (Exception e)
             {
-                // :(
+                Debug.LogWarning(e);
             }
         }
 
-        private void OnStopInteractionMessage(Message msg)
+        private static void GetInteractionData(Message msg, out Controller controller, out Interactable interactable)
         {
-            Block block = msg.GetData(0) as Block;
-            Block block2 = msg.GetData(1) as Block;
-            Controller controller = block.BlockScript as Controller;
-            Interactable interactable = block2.BlockScript as Interactable;
-            if (controller?.Machine.Player == msg.Sender)
-                interactable?.StopInteraction(controller);
+            Block controllerBlock = (Block)msg.GetData(0);
+            Block targetBlock = (Block)msg.GetData(1);
+
+            controller = (Controller)controllerBlock?.BlockScript;
+            interactable = (Interactable)targetBlock?.BlockScript;
         }
 
-        private void OnStartInteractionMessage(Message msg)
+        private void OnRemoteStartInteraction(Message msg)
         {
-            Block block = msg.GetData(0) as Block;
-            Block block2 = msg.GetData(1) as Block;
-            Controller controller = block.BlockScript as Controller;
-            Interactable interactable = block2.BlockScript as Interactable;
-            if (controller?.Machine.Player == msg.Sender)
+            GetInteractionData(msg, out Controller controller, out Interactable interactable);
+
+            if (controller != null)
                 interactable?.StartInteraction(controller);
         }
 
+        private void OnRemoteStopInteraction(Message msg)
+        {
+            GetInteractionData(msg, out Controller controller, out Interactable interactable);
+
+            if (controller != null)
+                interactable?.StopInteraction();
+        }
+
+        private void OnRequestStartInteraction(Message msg)
+        {
+            GetInteractionData(msg, out Controller controller, out Interactable interactable);
+
+            if (controller?.Machine.Player == msg.Sender && interactable != null && HasAuthority)
+            {
+                controller.TryStartInteraction(interactable);
+            }
+        }
+
+        private void OnRequestStopInteraction(Message msg)
+        {
+            GetInteractionData(msg, out Controller controller, out Interactable interactable);
+
+            if (controller?.Machine.Player == msg.Sender && interactable != null && HasAuthority)
+            {
+                controller.TryStopInteraction(interactable);
+            }
+        }
+    
         private void OnJumpMessage(Message msg)
         {
-            Block block = msg.GetData(0) as Block;
-            Controller controller = block.BlockScript as Controller;
-            if (controller?.Machine.Player == msg.Sender)
+            Block block = (Block)msg.GetData(0);
+
+            Controller controller = (Controller)block.BlockScript;
+
+            if (controller?.Machine.Player == msg.Sender || msg.Sender.IsHost)
                 controller?.Jump();
         }
 
         private void OnControllerMessage(Message msg)
         {
-            Block block = msg.GetData(0) as Block;
-            Controller controller = block.BlockScript as Controller;
             Vector3 direction = (Vector3)msg.GetData(1);
             Vector3 rotation = (Vector3)msg.GetData(2);
+
+            Block block = (Block)msg.GetData(0);
+            Controller controller = (Controller)block.BlockScript;
+
             if (controller?.Machine.Player == msg.Sender)
                 if (controller != null)
                 {
