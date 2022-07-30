@@ -8,7 +8,19 @@ namespace FPSController
 {
     public class Seat : Interactable
     {
+        public static readonly KeyCode[] EmulatableKeys = new KeyCode[]
+        {
+            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D, KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.T, KeyCode.F, KeyCode.G, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3
+        };
+
+        public class RemoteKey
+        {
+            public MKey emulator;
+            public bool state, previousState;
+        }
+
         public MKey emulateKey;
+        public Dictionary<KeyCode, RemoteKey> remoteKeys;
 
         public override bool EmulatesAnyKeys => true;
         public bool Occupied => User != null;
@@ -20,6 +32,14 @@ namespace FPSController
             base.SafeAwake();
 
             emulateKey = AddEmulatorKey("Occupied", "occupied", KeyCode.F);
+
+            remoteKeys = new Dictionary<KeyCode, RemoteKey>();
+
+            foreach (var key in EmulatableKeys)
+            {
+                string code = key.ToString();
+                remoteKeys.Add(key, new RemoteKey() { emulator = AddEmulatorKey(code, code, KeyCode.None) });
+            }
         }
 
         public override void OnSimulateStart()
@@ -47,6 +67,18 @@ namespace FPSController
         public void SetFree()
         {
             User = null;
+
+            foreach (var key in remoteKeys.Values)
+                key.state = false;
+        }
+
+        public void SetKey(KeyCode key, bool state)
+        {
+            if (User != null)
+            {
+                if (remoteKeys.TryGetValue(key, out RemoteKey remoteKey))
+                    remoteKey.state = state;
+            }
         }
 
         public override void SendKeyEmulationUpdateHost()
@@ -55,6 +87,15 @@ namespace FPSController
             {
                 _previousOccupied = Occupied;
                 EmulateKeys(Mod.NoKeys, emulateKey, Occupied);
+            }
+
+            foreach (var key in remoteKeys.Values)
+            {
+                if (key.state != key.previousState)
+                {
+                    EmulateKeys(Mod.NoKeys, key.emulator, key.state);
+                    key.previousState = key.state;
+                }
             }
         }
     }

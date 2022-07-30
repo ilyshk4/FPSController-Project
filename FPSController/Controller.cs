@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Modding;
 using Modding.Blocks;
@@ -155,6 +156,24 @@ namespace FPSController
                 if (IsFixedCameraActive && controlling)
                     SetControlling(false);
 
+                if (IsSitting)
+                    foreach (var key in Seat.EmulatableKeys)
+                    {
+                        if (HasAuthority)
+                        {
+                            if (Input.GetKeyDown(key))
+                                SetSeatKey(key, true);
+                            if (Input.GetKeyUp(key))
+                                SetSeatKey(key, false);
+                        } else
+                        {
+                            if (Input.GetKeyDown(key))
+                                ModNetworking.SendToHost(Mod.SeatKeyPress.CreateMessage(Block.From(BlockBehaviour), (int)key));
+                            if (Input.GetKeyUp(key))
+                                ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
+                        }
+                    }
+
                 float targetVertical = 0;
                 float targetHorizontal = 0;
 
@@ -249,6 +268,14 @@ namespace FPSController
                     StopInteraction(interactingWith);
                     interactingWith = null;
                 }
+            }
+        }
+
+        public void SetSeatKey(KeyCode key, bool value)
+        {
+            if (IsSitting)
+            {
+                seat.SetKey(key, value);
             }
         }
 
