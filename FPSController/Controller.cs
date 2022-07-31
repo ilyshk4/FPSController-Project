@@ -32,11 +32,13 @@ namespace FPSController
         public MKey activateKey;
         public MKey jump;
         public MKey interact;
+        public MKey crouch;
 
         public MLimits pitchLimits;
 
         public MToggle alwaysLabel;
         public MToggle visualPitch;
+        public MToggle toggleCrouch;
 
         public Interactable lookingAt;
         public Interactable interactingWith;
@@ -47,6 +49,8 @@ namespace FPSController
         public Seat seat;
 
         public bool controlling;
+
+        public bool targetCrouching;
 
         public float vertical, horizontal;
 
@@ -90,7 +94,11 @@ namespace FPSController
         private Quaternion _lastLookRotation;
         private Vector3 _visualsPosition;
 
+        private bool _crouching;
+
         private static Quaternion ViewOffset = Quaternion.AngleAxis(-90, -Vector3.right);
+
+        private static int ControllerCollisionMask = Game.BlockEntityLayerMask | 1 | 1 << 29;
 
         private void Start()
         {
@@ -113,9 +121,11 @@ namespace FPSController
             activateKey = AddKey("Active", "active", KeyCode.B);
             jump = AddKey("Jump", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
+            crouch = AddKey("Crouch", "crouch", KeyCode.LeftControl);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
             alwaysLabel = AddToggle("Attach Label", "always-label", true);
             visualPitch = AddToggle("Visual Pitch", "visual-pitch", true);
+            toggleCrouch = AddToggle("Toggle Crouch", "toggle-crouch", false);
             pitchLimits.UseLimitsToggle.DisplayInMapper = false;
             
             _oldFov = MainCamera.fieldOfView;
@@ -144,8 +154,8 @@ namespace FPSController
                 bottomObj.transform.localEulerAngles = Vector3.zero;
                 bottom = bottomObj.AddComponent<CapsuleCollider>();
                 bottom.radius = 0.25F;
-                bottom.height = 2F;
                 bottom.direction = 1;
+                bottom.height = 2F;
                 bottom.center = new Vector3(0, -0.5F, 0);
                 bottom.sharedMaterial = Mod.NoFriction;
             }
@@ -259,6 +269,15 @@ namespace FPSController
                                     ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
                             }
                         }
+
+                    if (crouch.IsPressed)
+                        if (toggleCrouch.IsActive)
+                            SetTargetCrouching(!targetCrouching);
+                        else
+                            SetTargetCrouching(true);
+
+                    if (crouch.IsReleased && !toggleCrouch.IsActive)
+                        SetTargetCrouching(false);
 
                     if (jump.IsPressed)
                         if (HasAuthority)
@@ -389,6 +408,28 @@ namespace FPSController
                 Rigidbody.drag = 0;
                 Rigidbody.mass = mass.Value;
 
+                if (targetCrouching != _crouching)
+                {     
+                    if (targetCrouching)
+                    {
+                        bottom.height = 1F;
+                        bottom.center = new Vector3(0, 0F, 0);
+                        Rigidbody.MovePosition(transform.position - Vector3.up);
+                        _crouching = true;
+                    }
+
+                    if (!targetCrouching)
+                    {
+                        if (!Physics.CheckSphere(transform.position + Vector3.up * 1F, 0.4F, ControllerCollisionMask))
+                        {
+                            bottom.height = 2F;
+                            bottom.center = new Vector3(0, -0.5F, 0);
+                            Rigidbody.MovePosition(transform.position + Vector3.up);
+                            _crouching = false;
+                        }
+                    }
+                }
+
                 float timestep = Time.fixedDeltaTime;
 
                 Vector3 groundVelocity = GetGroundVelocitySpread();
@@ -464,14 +505,27 @@ namespace FPSController
             meshRenderer.shadowCastingMode = 
                 value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
 
-            if (IsSitting && !controlling)
-                foreach (var key in Seat.EmulatableKeys)
-                {
-                    if (HasAuthority)
-                        SetSeatKey(key, false);
-                    else
-                        ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
-                }
+            if (!controlling)
+            {
+                SetTargetCrouching(false);
+
+                if (IsSitting)
+                    foreach (var key in Seat.EmulatableKeys)
+                    {
+                        if (HasAuthority)
+                            SetSeatKey(key, false);
+                        else
+                            ModNetworking.SendToHost(Mod.SeatKeyRelease.CreateMessage(Block.From(BlockBehaviour), (int)key));
+                    }
+            }
+        }
+
+        public void SetTargetCrouching(bool value)
+        {
+            if (HasAuthority)
+                targetCrouching = value;
+            else
+                ModNetworking.SendToHost(Mod.SetCrouch.CreateMessage(Block.From(BlockBehaviour), value));
         }
 
         public void SetSeat(Seat seat)
@@ -486,6 +540,8 @@ namespace FPSController
 
             this.seat?.SetFree();
             this.seat = seat;
+
+            SetTargetCrouching(false);
 
             if (HasAuthority)
             {
@@ -533,12 +589,8 @@ namespace FPSController
         {
             if (HasAuthority)
             {
-                const int defaultLayer = 1;
-                const int floorLayer = 1 << 29;
-                int layerMask = Game.BlockEntityLayerMask | defaultLayer | floorLayer;
-
                 if (!IsSitting)
-                    if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, layerMask))
+                    if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, ControllerCollisionMask))
                         Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
 
                 ModNetworking.SendToAll(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));

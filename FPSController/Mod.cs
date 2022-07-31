@@ -10,11 +10,11 @@ namespace FPSController
     {
         // TODO: Fix local simulation non-lethal errors.
         // Fix mountain friction.
-        // Crouching.
         // Health.
 
         public static MessageType SetControllerInput;
         public static MessageType Jump;
+        public static MessageType SetCrouch;
         public static MessageType RequestStartInteraction;
         public static MessageType RequestStopInteraction;
         public static MessageType RemoteStartInteraction;
@@ -41,6 +41,7 @@ namespace FPSController
 		{   
             SetControllerInput = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3);
             Jump = ModNetworking.CreateMessageType(DataType.Block);
+            SetCrouch = ModNetworking.CreateMessageType(DataType.Block, DataType.Boolean);
 
             RequestStartInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
             RequestStopInteraction = ModNetworking.CreateMessageType(DataType.Block, DataType.Block);
@@ -120,10 +121,24 @@ namespace FPSController
                 if (msg.Type == SeatKeyRelease)
                     OnSeatKeyRelease(msg);
 
+                if (msg.Type == SetCrouch)
+                    OnSetCrouch(msg);
+
             } catch (Exception e)
             {
                 Debug.LogWarning(e);
             }
+        }
+
+        private void OnSetCrouch(Message msg)
+        {
+            Block controllerBlock = (Block)msg.GetData(0);
+            bool value = (bool)msg.GetData(1);
+
+            Controller controller = (Controller)controllerBlock?.BlockScript;
+
+            if (controller?.Machine.Player == msg.Sender)
+                controller.targetCrouching = value;
         }
 
         private void OnSeatKeyPress(Message msg)
