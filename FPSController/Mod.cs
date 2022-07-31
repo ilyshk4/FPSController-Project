@@ -11,6 +11,7 @@ namespace FPSController
         // TODO: Fix local simulation non-lethal errors.
         // Fix mountain friction.
         // Health.
+        // Crouch in air.
 
         public static MessageType SetControllerInput;
         public static MessageType Jump;

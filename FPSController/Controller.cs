@@ -49,7 +49,7 @@ namespace FPSController
         public Seat seat;
 
         public bool controlling;
-
+        public bool isGrounded;
         public bool targetCrouching;
 
         public float vertical, horizontal;
@@ -408,13 +408,15 @@ namespace FPSController
                 Rigidbody.drag = 0;
                 Rigidbody.mass = mass.Value;
 
+                isGrounded = Physics.Raycast(transform.position, Vector2.down, 1.75F, ControllerCollisionMask);
+
                 if (targetCrouching != _crouching)
                 {     
                     if (targetCrouching)
                     {
                         bottom.height = 1F;
                         bottom.center = new Vector3(0, 0F, 0);
-                        Rigidbody.MovePosition(transform.position - Vector3.up);
+                        // Rigidbody.MovePosition(transform.position - Vector3.up);
                         _crouching = true;
                     }
 
@@ -435,7 +437,7 @@ namespace FPSController
                 Vector3 groundVelocity = GetGroundVelocitySpread();
                 Vector3 bodyVelocity = Rigidbody.velocity;
 
-                inputDirection = Vector3.ClampMagnitude(inputDirection, 1) * (_crouching ? 0.6F : 1F);
+                inputDirection = Vector3.ClampMagnitude(inputDirection, 1) * (_crouching && isGrounded ? 0.5F : 1F);
 
                 Vector3 goalVel;
 
@@ -590,7 +592,7 @@ namespace FPSController
             if (HasAuthority)
             {
                 if (!IsSitting)
-                    if (Physics.Raycast(transform.position + Vector3.down, Vector2.down, out RaycastHit hit, 2F, ControllerCollisionMask))
+                    if (isGrounded)
                         Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
 
                 ModNetworking.SendToAll(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
