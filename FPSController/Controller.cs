@@ -40,7 +40,8 @@ namespace FPSController
         public Interactable lookingAt;
         public Interactable interactingWith;
 
-        public SphereCollider top, bottom;
+        public SphereCollider top;
+        public CapsuleCollider bottom;
 
         public Seat seat;
 
@@ -128,7 +129,7 @@ namespace FPSController
                 topObj.transform.localPosition = Vector3.zero;
                 topObj.transform.localEulerAngles = Vector3.zero;
                 top = topObj.AddComponent<SphereCollider>();
-                top.radius = 0.5F;
+                top.radius = 0.25F;
                 top.center = new Vector3(0, 0, 0);
                 top.sharedMaterial = Mod.NoFriction;
 
@@ -136,9 +137,11 @@ namespace FPSController
                 bottomObj.transform.parent = transform;
                 bottomObj.transform.localPosition = Vector3.zero;
                 bottomObj.transform.localEulerAngles = Vector3.zero;
-                bottom = bottomObj.AddComponent<SphereCollider>();
-                bottom.radius = 0.5F;
-                bottom.center = new Vector3(0, -1F, 0);
+                bottom = bottomObj.AddComponent<CapsuleCollider>();
+                bottom.radius = 0.25F;
+                bottom.height = 2F;
+                bottom.direction = 1;
+                bottom.center = new Vector3(0, -0.5F, 0);
                 bottom.sharedMaterial = Mod.NoFriction;
             }
         }
@@ -560,7 +563,7 @@ namespace FPSController
 
         public Vector3 GetGroundVelocity(Vector3 direction)
         {
-            if (Physics.Raycast(transform.position + Vector3.down, direction, out RaycastHit hit, 1F + groundStickDistance.Value, Game.BlockEntityLayerMask))
+            if (Physics.Raycast(transform.position + Vector3.down * 1.4F, direction, out RaycastHit hit, 1F + groundStickDistance.Value, Game.BlockEntityLayerMask))
                 if (hit.rigidbody != null && hit.rigidbody.GetComponent<Controller>() == null)
                     return hit.rigidbody.velocity;
             return Vector3.zero;
