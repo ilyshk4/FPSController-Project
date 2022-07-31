@@ -36,7 +36,7 @@ namespace FPSController
         public MLimits pitchLimits;
 
         public MToggle alwaysLabel;
-        //public MToggle lockVisuals;
+        public MToggle visualPitch;
 
         public Interactable lookingAt;
         public Interactable interactingWith;
@@ -88,8 +88,9 @@ namespace FPSController
         private Quaternion _lastSittingRotation;
         private Quaternion _lookRotation;
         private Quaternion _lastLookRotation;
+        private Vector3 _visualsPosition;
 
-        private static Quaternion SeatOffset = Quaternion.AngleAxis(-90, -Vector3.right);
+        private static Quaternion ViewOffset = Quaternion.AngleAxis(-90, -Vector3.right);
 
         private void Start()
         {
@@ -114,7 +115,7 @@ namespace FPSController
             interact = AddKey("Interact", "interact", KeyCode.E);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
             alwaysLabel = AddToggle("Attach Label", "always-label", true);
-            // lockVisuals = AddToggle("Lock Visuals", "lock-visuals", false);
+            visualPitch = AddToggle("Visual Pitch", "visual-pitch", true);
             pitchLimits.UseLimitsToggle.DisplayInMapper = false;
             
             _oldFov = MainCamera.fieldOfView;
@@ -153,8 +154,10 @@ namespace FPSController
         public override void OnSimulateStart()
         {
             rotationX = targetRotationX = transform.eulerAngles.y;
-            rotationY = targetRotationY = 0;
+            rotationY = targetRotationY = 0;  
             inputRotation = GetLookRotation(rotationX, rotationY).eulerAngles;
+
+            _visualsPosition = BlockBehaviour.MeshRenderer.transform.localPosition;
         }
 
         public override void SimulateLateUpdateAlways()
@@ -169,20 +172,23 @@ namespace FPSController
 
         public override void SimulateUpdateAlways()
         {
-            lookingAt = null;
+            lookingAt = null;   
 
-            // if (lockVisuals.IsActive)
-            // {
-            //     Transform visuals = BlockBehaviour.MeshRenderer.transform;
-            //     if (IsSitting)
-            //     {
-            //         Vector3 normal = seat.transform.up;
-            //         Vector3 forward = seat.transform.forward;
-            // 
-            //         visuals.rotation = seat.transform.rotation * SeatOffset * Quaternion.AngleAxis(angle, Vector3.up);
-            //         visuals.position = seat.transform.position + seat.transform.forward * 0.25F;
-            //     }
-            // }
+            if (!visualPitch.IsActive)
+            {
+                Transform visuals = BlockBehaviour.MeshRenderer.transform;
+                if (IsSitting)
+                {
+                    float angle = (transform.rotation * Quaternion.Inverse(seat.transform.rotation)).eulerAngles.y;
+
+                    visuals.rotation = seat.transform.rotation * ViewOffset * Quaternion.AngleAxis(angle, Vector3.up);
+                    visuals.position = seat.transform.position + seat.transform.forward * 0.25F;
+                } else
+                {
+                    visuals.position = transform.position + Quaternion.Inverse(ViewOffset) * _visualsPosition;
+                    visuals.rotation = Quaternion.AngleAxis((transform.rotation * ViewOffset).eulerAngles.y, Vector3.up);
+                }
+            }
 
             if (IsLocal)
             {
@@ -226,7 +232,7 @@ namespace FPSController
 
                 if (IsSitting)
                 {
-                    _lastSittingRotation = _finalRotation = seat.transform.rotation * SeatOffset * _lookRotation;
+                    _lastSittingRotation = _finalRotation = seat.transform.rotation * ViewOffset * _lookRotation;
                 }
                 else
                     _lastLookRotation = _finalRotation = _lookRotation;

@@ -12,7 +12,6 @@ namespace FPSController
         // Fix mountain friction.
         // Crouching.
         // Health.
-        // Visuals.
 
         public static MessageType SetControllerInput;
         public static MessageType Jump;
