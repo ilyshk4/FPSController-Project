@@ -51,8 +51,12 @@ namespace FPSController
 
             BoxCollider interactCollider = gameObject.AddComponent<BoxCollider>();
             interactCollider.isTrigger = true;
-            interactCollider.size = new Vector3(1.1F, 1.1F, 0.6F);
+            interactCollider.size = new Vector3(1.25F, 1.25F, 0.75F);
             interactCollider.center = new Vector3(0, 0, 0.25F);
+
+            Joint joint = gameObject.GetComponent<Joint>();
+            if (joint != null)
+                joint.breakForce = joint.breakTorque = float.PositiveInfinity;
         }
 
         public override void StartInteraction(Controller controller)

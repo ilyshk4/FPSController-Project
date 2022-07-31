@@ -36,6 +36,7 @@ namespace FPSController
         public MLimits pitchLimits;
 
         public MToggle alwaysLabel;
+        //public MToggle lockVisuals;
 
         public Interactable lookingAt;
         public Interactable interactingWith;
@@ -88,6 +89,8 @@ namespace FPSController
         private Quaternion _lookRotation;
         private Quaternion _lastLookRotation;
 
+        private static Quaternion SeatOffset = Quaternion.AngleAxis(-90, -Vector3.right);
+
         private void Start()
         {
             foreach (var joint in GetComponents<Joint>())
@@ -111,6 +114,7 @@ namespace FPSController
             interact = AddKey("Interact", "interact", KeyCode.E);
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
             alwaysLabel = AddToggle("Attach Label", "always-label", true);
+            // lockVisuals = AddToggle("Lock Visuals", "lock-visuals", false);
             pitchLimits.UseLimitsToggle.DisplayInMapper = false;
             
             _oldFov = MainCamera.fieldOfView;
@@ -159,13 +163,26 @@ namespace FPSController
             {
                 LocalMachine machine = Machine.InternalObject;
                 machine.OnAnalysisReset(); // Resets ONLY center preventing machine from overriding controller's value.
-                machine.SetMachineCenter(transform.position + Vector3.up * (-machine.Size.y - 1F));
+                machine.SetMachineCenter(transform.position + Vector3.up * (-machine.Size.y));
             }
         }
 
         public override void SimulateUpdateAlways()
         {
             lookingAt = null;
+
+            // if (lockVisuals.IsActive)
+            // {
+            //     Transform visuals = BlockBehaviour.MeshRenderer.transform;
+            //     if (IsSitting)
+            //     {
+            //         Vector3 normal = seat.transform.up;
+            //         Vector3 forward = seat.transform.forward;
+            // 
+            //         visuals.rotation = seat.transform.rotation * SeatOffset * Quaternion.AngleAxis(angle, Vector3.up);
+            //         visuals.position = seat.transform.position + seat.transform.forward * 0.25F;
+            //     }
+            // }
 
             if (IsLocal)
             {
@@ -209,8 +226,7 @@ namespace FPSController
 
                 if (IsSitting)
                 {
-                    Quaternion pitchOffset = Quaternion.AngleAxis(-90, -Vector3.right);
-                    _lastSittingRotation = _finalRotation = seat.transform.rotation * pitchOffset * _lookRotation;
+                    _lastSittingRotation = _finalRotation = seat.transform.rotation * SeatOffset * _lookRotation;
                 }
                 else
                     _lastLookRotation = _finalRotation = _lookRotation;

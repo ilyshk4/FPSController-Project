@@ -10,6 +10,9 @@ namespace FPSController
     {
         // TODO: Fix local simulation non-lethal errors.
         // Fix mountain friction.
+        // Crouching.
+        // Health.
+        // Visuals.
 
         public static MessageType SetControllerInput;
         public static MessageType Jump;
@@ -36,7 +39,7 @@ namespace FPSController
         public static bool HasAuthority => StatMaster.isHosting || !StatMaster.isMP || StatMaster.isLocalSim;
 
         public override void OnLoad()
-		{
+		{   
             SetControllerInput = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3);
             Jump = ModNetworking.CreateMessageType(DataType.Block);
 
