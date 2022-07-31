@@ -437,7 +437,7 @@ namespace FPSController
                 Vector3 groundVelocity = GetGroundVelocitySpread();
                 Vector3 bodyVelocity = Rigidbody.velocity;
 
-                inputDirection = Vector3.ClampMagnitude(inputDirection, 1) * (_crouching && isGrounded ? 0.5F : 1F);
+                Vector3 input = Vector3.ClampMagnitude(inputDirection, 1) * (_crouching && isGrounded ? 0.5F : 1F);
 
                 Vector3 goalVel;
 
@@ -449,7 +449,7 @@ namespace FPSController
                 }
                 else
                 {
-                    goalVel = groundVelocity + Vector3.Scale(inputDirection, new Vector3(1, 0, 1)) * speed.Value;
+                    goalVel = groundVelocity + Vector3.Scale(input, new Vector3(1, 0, 1)) * speed.Value;
                 }
 
                 goalVel = Vector3.MoveTowards(goalVel, goalVel + bodyVelocity, timestep);
