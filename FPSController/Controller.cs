@@ -435,7 +435,7 @@ namespace FPSController
                 Vector3 groundVelocity = GetGroundVelocitySpread();
                 Vector3 bodyVelocity = Rigidbody.velocity;
 
-                inputDirection = Vector3.ClampMagnitude(inputDirection, 1);
+                inputDirection = Vector3.ClampMagnitude(inputDirection, 1) * (_crouching ? 0.6F : 1F);
 
                 Vector3 goalVel;
 
