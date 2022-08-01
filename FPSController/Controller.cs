@@ -27,6 +27,7 @@ namespace FPSController
         public MSlider jumpForce;
         public MSlider mass;
         public MSlider healthSlider;
+        public MSlider minimumDamage;
 
         public MKey activateKey;
         public MKey jump;
@@ -124,6 +125,7 @@ namespace FPSController
         public override void SafeAwake()
         {
             healthSlider = AddSlider("Health", "health-value", 0.5F, 0, 3F);
+            minimumDamage = AddSlider("Min Impact Damage", "min-damage", 0.5F, 0, 1F);
             fov = AddSlider("Camera FOV", "fov", 65, 50, 100);
             speed = AddSlider("Max Speed", "speed", 10, 0, 150);
             acceleration = AddSlider("Max Acceleration", "acceleration", 75, 0, 200);
@@ -154,7 +156,12 @@ namespace FPSController
             meshRenderer = GetComponentInChildren<MeshRenderer>();
 
             healthSlider.DisplayInMapper = false;
-            healthToggle.Toggled += (value) => healthSlider.DisplayInMapper = value;
+            minimumDamage.DisplayInMapper = false;
+            healthToggle.Toggled += (value) =>
+            {
+                minimumDamage.DisplayInMapper = value;
+                healthSlider.DisplayInMapper = value;
+            };
 
             audioSource = gameObject.AddComponent<AudioSource>();
             audioSource.clip = Mod.Hurt;
@@ -445,8 +452,6 @@ namespace FPSController
 
             if (healthToggle.IsActive && Health.health != _previousHealth)
             {
-                Debug.Log(Health.health);
-                Debug.Log(_previousHealth);
                 BloodHit();
                 _previousHealth = Health.health;
             }
@@ -625,7 +630,7 @@ namespace FPSController
             float maxMass = Mathf.Max(massA, massB);
             float damage = maxMass * magnitude * magnitude / 10000F;
 
-            if (damage > 0.35F)
+            if (damage > minimumDamage.Value)
             {
                 Health.DamageBlock(damage);
                 if (Dead)
@@ -719,7 +724,7 @@ namespace FPSController
         public void SetTargetCrouching(bool value)
         {
             targetCrouching = value;
-            if (HasAuthority)
+            if (!HasAuthority)
                 ModNetworking.SendToHost(Mod.SetCrouch.CreateMessage(Block.From(BlockBehaviour), value));
         }
 
