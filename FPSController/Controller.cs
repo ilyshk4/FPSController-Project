@@ -274,9 +274,6 @@ namespace FPSController
                 if (IsFixedCameraActive && controlling)
                     SetControlling(false);
 
-                if (Dead && IsSitting)
-                    SetSeat(null);
-
                 float targetVertical = 0;
                 float targetHorizontal = 0;
 
@@ -357,13 +354,17 @@ namespace FPSController
                             Jump();
                         else
                             ModNetworking.SendToHost(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
-
+                    string text = "Baboo: ";
                     if (Physics.Raycast(MainCamera.transform.position, MainCamera.transform.forward, out RaycastHit hit, interactDistance.Value, Game.BlockEntityLayerMask))
                     {
+                        text += hit.transform.name + " ";
                         Interactable hitInteractable = hit.transform.GetComponent<Interactable>();
-                        if (hitInteractable != null && hitInteractable.IsSimulating)
+                        text += hitInteractable + " ";
+                        if (hitInteractable != null)
                             lookingAt = hitInteractable;
                     }
+                    text += lookingAt + " ";
+                    Debug.Log(text);
 
                     if (lookingAt != null)
                     {
@@ -579,6 +580,8 @@ namespace FPSController
 
             top.sharedMaterial = Mod.Limb;
             bottom.sharedMaterial = Mod.Limb;
+
+            SetSeat(null);
 
             if (Rigidbody != null)
             {
