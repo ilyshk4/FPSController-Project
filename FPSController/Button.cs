@@ -18,6 +18,9 @@ namespace FPSController
 
         public MeshRenderer topRenderer;
 
+        public BoxCollider interactCollider;
+
+
         public bool isHeld;
 
         private bool _previousIsHeld;
@@ -53,14 +56,19 @@ namespace FPSController
         {
             topRenderer.material.color = color.Value;
         }
-
-        public override void OnSimulateStart()
+        public override void SimulateUpdateAlways()
         {
-            base.OnSimulateStart();
+            if (interactCollider == null)
+            {
+                interactCollider = gameObject.AddComponent<BoxCollider>();
+            }
 
-            BoxCollider interactCollider = gameObject.AddComponent<BoxCollider>();
-            interactCollider.isTrigger = true;
-            interactCollider.center = new Vector3(0, 0, 0.5F);
+            if (interactCollider != null)
+            {
+                interactCollider.enabled = true;
+                interactCollider.isTrigger = true;
+                interactCollider.center = new Vector3(0, 0, 0.5F);
+            }
         }
 
         private void Update()
