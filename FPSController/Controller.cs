@@ -870,9 +870,16 @@ namespace FPSController
 
         public bool OnExplode(float power, float upPower, float torquePower, Vector3 explosionPos, float radius, int mask)
         {
-            if (Rigidbody != null && Dead)
+            float damage = power * Mathf.Clamp01(1F - Vector3.Distance(transform.position, explosionPos) / radius);
+            damage /= 1000F;
+
+            if (HasAuthority)
+                Health.DamageBlock(damage);
+
+            if (Rigidbody != null && Dead)  
             {
                 Rigidbody.mass = 0.3F;
+                Rigidbody.AddExplosionForce(power / 200F, explosionPos, radius, upPower / 200F, ForceMode.Impulse);
             }
             return true;
         }
