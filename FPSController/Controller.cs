@@ -346,8 +346,8 @@ namespace FPSController
                         else
                             SetTargetCrouching(true);
 
-                    if (crouch.IsReleased && !toggleCrouch.IsActive) SetSeat(null);
-                    SetTargetCrouching(false);
+                    if (crouch.IsReleased && !toggleCrouch.IsActive)
+                        SetTargetCrouching(false);
 
                     if (jump.IsPressed)
                         if (HasAuthority)
