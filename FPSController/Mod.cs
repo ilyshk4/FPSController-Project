@@ -22,6 +22,9 @@ namespace FPSController
         public static MessageType RemoteStopInteraction;
         public static MessageType SeatKeyPress;
         public static MessageType SeatKeyRelease;
+        public static MessageType Death;
+        public static MessageType BloodParticles;
+        public static MessageType BloodHit;
 
         public static Mesh ButtonBase, ButtonTop;
 
@@ -33,6 +36,13 @@ namespace FPSController
         public static GUIStyle InfoTextShadow;
 
         public static PhysicMaterial NoFriction;
+        public static PhysicMaterial Limb;
+
+        public static AudioClip Hurt;
+        public static GameObject BloodBurst;
+        public static GameObject BloodBurstHit;
+        public static GameObject BloodSquirt;
+        public static GameObject BloodQuad;
 
         public static MKey[] NoKeys;
 
@@ -51,6 +61,10 @@ namespace FPSController
 
             SeatKeyPress = ModNetworking.CreateMessageType(DataType.Block, DataType.Integer);
             SeatKeyRelease = ModNetworking.CreateMessageType(DataType.Block, DataType.Integer);
+
+            Death = ModNetworking.CreateMessageType(DataType.Block);
+            BloodHit = ModNetworking.CreateMessageType(DataType.Block);
+            BloodParticles = ModNetworking.CreateMessageType(DataType.Block);
 
             ModNetworking.MessageReceived += OnMessageReceived;
 
@@ -91,7 +105,24 @@ namespace FPSController
                 staticFriction = 0,
             };
 
+            Limb = new PhysicMaterial()
+            {
+                dynamicFriction = 0.5F,
+                staticFriction = 0.5F,
+                bounciness = 0.75F
+            };
+
             NoKeys = new MKey[0];
+
+            GameObject peasant = GameObject.Find("_PERSISTENT/OBJECTS/Prefabs/Humans/PeasantV2");
+
+            KillingHandler killingHandler = peasant.GetComponent<KillingHandler>();
+            
+            Hurt = killingHandler.my.SoundController.audioclips[0];
+            BloodBurst = killingHandler.my.BloodBurst.gameObject;
+            BloodBurstHit = killingHandler.my.BloodBurstHit.gameObject;
+            BloodSquirt = killingHandler.my.BloodSquirt.gameObject;
+            BloodQuad = peasant.transform.Find("BloodSplatterQuad").gameObject;
         }
 
         private void OnMessageReceived(Message msg)
@@ -125,10 +156,40 @@ namespace FPSController
                 if (msg.Type == SetCrouch)
                     OnSetCrouch(msg);
 
+                if (msg.Type == Death)
+                    OnDeath(msg);
+
+                if (msg.Type == BloodParticles)
+                    OnBloodParticles(msg);
+
+                if (msg.Type == BloodHit)
+                    OnBloodHit(msg);
+
             } catch (Exception e)
             {
                 Debug.LogWarning(e);
             }
+        }
+
+        private void OnBloodHit(Message msg)
+        {
+            Block controllerBlock = (Block)msg.GetData(0);
+            Controller controller = (Controller)controllerBlock?.BlockScript;
+            controller.BloodHit();
+        }
+
+        private void OnBloodParticles(Message msg)
+        {
+            Block controllerBlock = (Block)msg.GetData(0);
+            Controller controller = (Controller)controllerBlock?.BlockScript;
+            controller.BloodParticles();
+        }
+
+        private void OnDeath(Message msg)
+        {
+            Block controllerBlock = (Block)msg.GetData(0);
+            Controller controller = (Controller)controllerBlock?.BlockScript;
+            controller.Death();
         }
 
         private void OnSetCrouch(Message msg)

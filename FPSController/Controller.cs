@@ -1,14 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using Modding;
+﻿using Modding;
 using Modding.Blocks;
+using System;
 using UnityEngine;
 using LocalMachine = Machine;
 
 namespace FPSController
 {
-    public class Controller : BlockScript
+    public class Controller : BlockScript, IExplosionEffect
     {
         public MeshRenderer meshRenderer;
 
@@ -28,6 +26,7 @@ namespace FPSController
         public MSlider interactDistance;
         public MSlider jumpForce;
         public MSlider mass;
+        public MSlider healthSlider;
 
         public MKey activateKey;
         public MKey jump;
@@ -39,12 +38,20 @@ namespace FPSController
         public MToggle alwaysLabel;
         public MToggle visualPitch;
         public MToggle toggleCrouch;
+        public MToggle healthToggle;
 
         public Interactable lookingAt;
         public Interactable interactingWith;
 
         public SphereCollider top;
         public CapsuleCollider bottom;
+
+        public AudioSource audioSource;
+
+        public ParticleSystem bloodBurst;
+        public ParticleSystem bloodBurstHit;
+        public ParticleSystem bloodSquirt;
+        public Transform bloodQuad;
 
         public Seat seat;
 
@@ -85,6 +92,12 @@ namespace FPSController
             }
         }
 
+        public BlockHealthBar Health => BlockBehaviour.BlockHealth;
+
+        public Vector3 CrouchOffset => _crouching? Vector3.up : Vector3.zero;
+
+        public bool Dead => Health.health <= 0;
+
         private float _oldFov;
         private float _oldNearClip;
         private long _localTicksCount = 0;
@@ -93,6 +106,8 @@ namespace FPSController
         private Quaternion _lookRotation;
         private Quaternion _lastLookRotation;
         private Vector3 _visualsPosition;
+        private bool _died;
+        private float _previousHealth;
 
         private bool _crouching;
 
@@ -108,6 +123,7 @@ namespace FPSController
 
         public override void SafeAwake()
         {
+            healthSlider = AddSlider("Health", "health-value", 0.5F, 0, 3F);
             fov = AddSlider("Camera FOV", "fov", 65, 50, 100);
             speed = AddSlider("Max Speed", "speed", 10, 0, 150);
             acceleration = AddSlider("Max Acceleration", "acceleration", 75, 0, 200);
@@ -118,20 +134,33 @@ namespace FPSController
             groundStickSpread = AddSlider("Ground Stick Spread", "stick-spread", 20, 0, 85);
             interactDistance = AddSlider("Interact Distance", "interact-distance", 5, 0, 15F);
             mass = AddSlider("Mass", "mass", 5, 1, 15F);
+
             activateKey = AddKey("Active", "active", KeyCode.B);
             jump = AddKey("Jump", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
             crouch = AddKey("Crouch", "crouch", KeyCode.LeftControl);
+
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
             alwaysLabel = AddToggle("Attach Label", "always-label", true);
             visualPitch = AddToggle("Visual Pitch", "visual-pitch", true);
             toggleCrouch = AddToggle("Toggle Crouch", "toggle-crouch", false);
+            healthToggle = AddToggle("Has Health", "health-toggle", false);
+
             pitchLimits.UseLimitsToggle.DisplayInMapper = false;
             
             _oldFov = MainCamera.fieldOfView;
             _oldNearClip = MainCamera.nearClipPlane;
 
             meshRenderer = GetComponentInChildren<MeshRenderer>();
+
+            healthSlider.DisplayInMapper = false;
+            healthToggle.Toggled += (value) => healthSlider.DisplayInMapper = value;
+
+            audioSource = gameObject.AddComponent<AudioSource>();
+            audioSource.clip = Mod.Hurt;
+            audioSource.spatialBlend = 1F;
+            audioSource.playOnAwake = false;
+            audioSource.loop = false;
 
             if (!IsSimulating)
             {
@@ -158,6 +187,18 @@ namespace FPSController
                 bottom.height = 2F;
                 bottom.center = new Vector3(0, -0.5F, 0);
                 bottom.sharedMaterial = Mod.NoFriction;
+
+                GameObject CreateEffect(GameObject prefab)
+                {
+                    GameObject obj = ((GameObject)Instantiate(prefab, transform));
+                    obj.transform.localPosition = Vector3.zero;
+                    return obj;
+                }
+
+                bloodBurst = CreateEffect(Mod.BloodBurst).GetComponent<ParticleSystem>();
+                bloodBurstHit = CreateEffect(Mod.BloodBurstHit).GetComponent<ParticleSystem>();
+                bloodSquirt = CreateEffect(Mod.BloodSquirt).GetComponent<ParticleSystem>();
+                bloodQuad = CreateEffect(Mod.BloodQuad).transform;
             }
         }
 
@@ -168,6 +209,16 @@ namespace FPSController
             inputRotation = GetLookRotation(rotationX, rotationY).eulerAngles;
 
             _visualsPosition = BlockBehaviour.MeshRenderer.transform.localPosition;
+
+            if (healthToggle.IsActive)
+                _previousHealth = Health.health = healthSlider.Value;
+
+            if (Rigidbody != null)
+            {
+                Rigidbody.constraints = RigidbodyConstraints.FreezeRotation;
+                Rigidbody.mass = mass.Value;
+                Rigidbody.drag = 0;
+            }
         }
 
         public override void SimulateLateUpdateAlways()
@@ -208,6 +259,9 @@ namespace FPSController
                 if (IsFixedCameraActive && controlling)
                     SetControlling(false);
 
+                if (Dead && IsSitting)
+                    SetSeat(null);
+
                 float targetVertical = 0;
                 float targetHorizontal = 0;
 
@@ -232,6 +286,7 @@ namespace FPSController
                     const float oldVersionScale = 1F / 60F;
                     targetRotationX += Input.GetAxis("Mouse X") * sensitivity.Value * oldVersionScale;
                     targetRotationY += Input.GetAxis("Mouse Y") * sensitivity.Value * oldVersionScale;
+
                     targetRotationY = ClampAngle(targetRotationY, -85F, 85F);
 
                     rotationX = Mathf.Lerp(rotationX, targetRotationX, smoothing.Value * Time.unscaledDeltaTime);
@@ -249,7 +304,10 @@ namespace FPSController
 
                 if (controlling) 
                 {
-                    MainCamera.transform.rotation = _finalRotation;
+                    if (Dead)
+                        MainCamera.transform.rotation = transform.rotation * ViewOffset;
+                    else
+                        MainCamera.transform.rotation = _finalRotation;
 
                     if (IsSitting)
                         foreach (var key in Seat.EmulatableKeys)
@@ -335,7 +393,7 @@ namespace FPSController
 
         public void SetSeatKey(KeyCode key, bool value)
         {
-            if (IsSitting)
+            if (IsSitting && !Dead)
             {
                 seat.SetKey(key, value);
             }
@@ -343,7 +401,7 @@ namespace FPSController
 
         public void TryStartInteraction(Interactable interactable)
         {
-            if (interactable.User == null && interactable.IsSimulating)
+            if (interactable.User == null && interactable.IsSimulating && !Dead)
             {
                 interactable.StartInteraction(this);
                 ModNetworking.SendToAll(Mod.RemoteStartInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
@@ -352,7 +410,7 @@ namespace FPSController
 
         public void TryStopInteraction(Interactable interactable)
         {
-            if (interactable.User == this && interactable.IsSimulating)
+            if (interactable.User == this && interactable.IsSimulating && !Dead)
             {
                 interactable.StopInteraction();
                 ModNetworking.SendToAll(Mod.RemoteStopInteraction.CreateMessage(Block.From(BlockBehaviour), Block.From(interactable.BlockBehaviour)));
@@ -377,7 +435,21 @@ namespace FPSController
 
         private void FixedUpdate()
         {
-            bottom.gameObject.transform.eulerAngles = Vector3.zero;
+            if (!Dead)
+                bottom.gameObject.transform.eulerAngles = Vector3.zero;
+
+            if (Dead && !_died)
+            {
+                Death();
+            }
+
+            if (healthToggle.IsActive && Health.health != _previousHealth)
+            {
+                Debug.Log(Health.health);
+                Debug.Log(_previousHealth);
+                BloodHit();
+                _previousHealth = Health.health;
+            }
 
             if (IsLocal)
             {
@@ -389,7 +461,7 @@ namespace FPSController
                     inputDirection = Vector3.ProjectOnPlane(MainCamera.transform.forward, Vector3.up).normalized * vertical + MainCamera.transform.right * horizontal;
                 }
                 else
-                    inputDirection = Vector3.zero;
+                    inputDirection = Vector3.zero; 
 
                 inputRotation = _finalRotation.eulerAngles;
 
@@ -403,26 +475,29 @@ namespace FPSController
 
             if (HasAuthority && IsSimulating)
             {
-                Rigidbody.constraints = RigidbodyConstraints.FreezeRotation;
-                Rigidbody.angularDrag = 16;
-                Rigidbody.drag = 0;
-                Rigidbody.mass = mass.Value;
 
-                isGrounded = Physics.Raycast(transform.position, Vector2.down, 1.75F, ControllerCollisionMask);
+                if (BlockBehaviour.fireTag.burning)
+                    Health.DamageBlock(0.004F);
 
-                if (targetCrouching != _crouching)
+                if (BlockBehaviour.iceTag.frozen)
+                    Health.DamageBlock(0.004F);
+
+                isGrounded = Physics.Raycast(transform.position + Vector3.down + CrouchOffset, Vector2.down, 0.75F, ControllerCollisionMask);
+
+                if (targetCrouching != _crouching && !Dead)
                 {     
                     if (targetCrouching)
                     {
                         bottom.height = 1F;
                         bottom.center = new Vector3(0, 0F, 0);
-                        // Rigidbody.MovePosition(transform.position - Vector3.up);
+                        if (isGrounded)
+                            Rigidbody.MovePosition(transform.position - Vector3.up);
                         _crouching = true;
                     }
 
                     if (!targetCrouching)
                     {
-                        if (!Physics.CheckSphere(transform.position + Vector3.up * 1F, 0.4F, ControllerCollisionMask))
+                        if (!Physics.SphereCast(transform.position, 0.25F, Vector2.up, out RaycastHit hit, 1F, ControllerCollisionMask))
                         {
                             bottom.height = 2F;
                             bottom.center = new Vector3(0, -0.5F, 0);
@@ -458,19 +533,138 @@ namespace FPSController
 
                 neededAccel = Vector3.ClampMagnitude(neededAccel, groundVelocity == Vector3.zero ? acceleration.Value : 1000000);
 
-                Rigidbody.AddForce(Vector3.Scale(neededAccel, new Vector3(1, IsSitting ? 1 : 0, 1)) * Rigidbody.mass);
-
                 Quaternion target = GetBodyRotation(inputRotation);
 
                 const float maxRotationDelta = 10F;
 
                 float rotationDelta = Quaternion.Angle(Rigidbody.rotation, target);
 
-                if (rotationDelta < maxRotationDelta)
-                    Rigidbody.rotation = Quaternion.Lerp(Rigidbody.rotation, target, 0.5F);
-                else
-                    Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
+                if (!Dead)
+                {
+                    Rigidbody.constraints = RigidbodyConstraints.FreezeRotation;
+
+                    Rigidbody.AddForce(Vector3.Scale(neededAccel, new Vector3(1, IsSitting ? 1 : 0, 1)) * Rigidbody.mass);
+
+                    if (rotationDelta < maxRotationDelta)
+                        Rigidbody.rotation = Quaternion.Lerp(Rigidbody.rotation, target, 0.5F);
+                    else
+                        Rigidbody.rotation = Quaternion.RotateTowards(Rigidbody.rotation, target, maxRotationDelta);
+                }
             }
+        }
+
+        public void Death()
+        {
+            _died = true;
+            Health.health = 0;
+
+            top.sharedMaterial = Mod.Limb;
+            bottom.sharedMaterial = Mod.Limb;
+
+            if (Rigidbody != null)
+            {
+                Rigidbody.constraints = RigidbodyConstraints.None;
+                Rigidbody.mass = 0.3F;
+            }
+
+            if (OptionsMaster.BesiegeConfig.BloodEnabled)
+            {
+                BlockBehaviour.Prefab.bleedOnTexture = true;
+                BlockBehaviour.BloodSplatter();
+                audioSource.Play();
+                BloodParticles();
+                BloodQuad();
+            }
+
+            bottom.gameObject.transform.localRotation = ViewOffset;
+
+            if (HasAuthority)
+                ModNetworking.SendToAll(Mod.Death.CreateMessage(Block.From(BlockBehaviour)));
+        }
+
+        public void BloodHit()
+        {
+            if (HasAuthority)
+                ModNetworking.SendToAll(Mod.BloodHit.CreateMessage(Block.From(BlockBehaviour)));
+
+            if (!OptionsMaster.BesiegeConfig.BloodEnabled)
+                return;
+
+            if (bloodBurstHit && !bloodBurstHit.isPlaying)
+            {
+                bloodBurstHit.startColor = StatMaster.BloodColor;
+                bloodBurstHit.GetComponent<ParticleSystemRenderer>().material.SetColor("_TintColor", StatMaster.BloodColor);
+                bloodBurstHit.Play();
+            }
+        }
+        
+        public void BloodParticles()
+        {
+            if (HasAuthority)
+                ModNetworking.SendToAll(Mod.BloodParticles.CreateMessage(Block.From(BlockBehaviour)));
+
+            if (!OptionsMaster.BesiegeConfig.BloodEnabled)
+                return;
+
+            Color bloodColor = StatMaster.BloodColor;
+            bloodBurst.startColor = bloodColor;
+            bloodSquirt.startColor = bloodColor;
+            bloodSquirt.GetComponent<ParticleSystemRenderer>().material.SetColor("_TintColor", StatMaster.BloodColor);
+            bloodBurst.GetComponent<ParticleSystemRenderer>().material.SetColor("_TintColor", StatMaster.BloodColor);
+            if (!bloodSquirt.isPlaying)
+                bloodSquirt.Play();
+            if (!bloodBurst.isPlaying)
+                bloodBurst.Play();
+        }
+
+        public override void OnSimulateCollisionEnter(Collision collision)
+        {
+            float magnitude = collision.relativeVelocity.magnitude;
+            float massA = Rigidbody.mass;
+            float massB = collision.rigidbody?.mass ?? 0F;
+            float maxMass = Mathf.Max(massA, massB);
+            float damage = maxMass * magnitude * magnitude / 10000F;
+
+            if (damage > 0.35F)
+            {
+                Health.DamageBlock(damage);
+                if (Dead)
+                {
+                    if (Rigidbody != null)
+                    {
+                        Rigidbody.constraints = RigidbodyConstraints.None;
+                        Rigidbody.mass = 0.3F;
+                    }
+                }
+            }
+
+            if (Dead)
+            {
+                if (OptionsMaster.BesiegeConfig.BloodEnabled)
+                {
+                    BlockBehaviour behaviour = collision.rigidbody?.GetComponent<BlockBehaviour>();
+                    if (behaviour != null)
+                        behaviour.BloodSplatter();
+
+                    BloodParticles();
+                }
+            }
+        }
+
+        public void BloodQuad()
+        {
+            if (!OptionsMaster.BesiegeConfig.BloodEnabled || bloodQuad == null)
+                return;
+            if (transform.position.y - SingleInstanceFindOnly<AddPiece>.Instance.floorHeight > 3F)
+                return;
+            MeshRenderer bloodQuadRenderer = bloodQuad.GetComponent<MeshRenderer>();
+            bloodQuadRenderer.material.color = StatMaster.BloodColor;
+            bloodQuadRenderer.enabled = true;
+            bloodQuad.parent = ReferenceMaster.physicsGoalInstance;
+            bloodQuad.position = new Vector3(transform.position.x, SingleInstanceFindOnly<AddPiece>.Instance.floorHeight + 0.05f, transform.position.z);
+            bloodQuad.forward = -Vector3.up;
+            bloodQuad.localEulerAngles = new Vector3(bloodQuad.localEulerAngles.x, bloodQuad.localEulerAngles.y, UnityEngine.Random.Range(0f, 360f));
+            bloodQuad.GetComponent<Decal>().enabled = true;
         }
 
         private Quaternion GetBodyRotation(Vector3 inputRotation)
@@ -524,9 +718,8 @@ namespace FPSController
 
         public void SetTargetCrouching(bool value)
         {
+            targetCrouching = value;
             if (HasAuthority)
-                targetCrouching = value;
-            else
                 ModNetworking.SendToHost(Mod.SetCrouch.CreateMessage(Block.From(BlockBehaviour), value));
         }
 
@@ -591,7 +784,7 @@ namespace FPSController
         {
             if (HasAuthority)
             {
-                if (!IsSitting)
+                if (!IsSitting && !Dead)
                     if (isGrounded)
                         Rigidbody.AddForce(Vector3.up * jumpForce.Value, ForceMode.Impulse);
 
@@ -601,7 +794,6 @@ namespace FPSController
             if (IsSitting)
                 SetSeat(null);
         }
-
 
         public Vector3 GetGroundVelocitySpread()
         {
@@ -639,7 +831,7 @@ namespace FPSController
 
         public Vector3 GetGroundVelocity(Vector3 direction)
         {
-            if (Physics.Raycast(transform.position + Vector3.down * 1.4F, direction, out RaycastHit hit, 1F + groundStickDistance.Value, Game.BlockEntityLayerMask))
+            if (Physics.Raycast(transform.position + Vector3.down * 1.4F + CrouchOffset, direction, out RaycastHit hit, 1F + groundStickDistance.Value, Game.BlockEntityLayerMask))
                 if (hit.rigidbody != null && hit.rigidbody.GetComponent<Controller>() == null)
                     return hit.rigidbody.velocity;
             return Vector3.zero;
@@ -650,6 +842,15 @@ namespace FPSController
             Quaternion xQuaternion = Quaternion.AngleAxis(x, Vector3.up);
             Quaternion yQuaternion = Quaternion.AngleAxis(y, -Vector3.right);
             return xQuaternion * yQuaternion;
+        }
+
+        public bool OnExplode(float power, float upPower, float torquePower, Vector3 explosionPos, float radius, int mask)
+        {
+            if (Rigidbody != null && Dead)
+            {
+                Rigidbody.mass = 0.3F;
+            }
+            return true;
         }
     }
 }
