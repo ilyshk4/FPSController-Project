@@ -346,25 +346,22 @@ namespace FPSController
                         else
                             SetTargetCrouching(true);
 
-                    if (crouch.IsReleased && !toggleCrouch.IsActive)
-                        SetTargetCrouching(false);
+                    if (crouch.IsReleased && !toggleCrouch.IsActive) SetSeat(null);
+                    SetTargetCrouching(false);
 
                     if (jump.IsPressed)
                         if (HasAuthority)
                             Jump();
                         else
                             ModNetworking.SendToHost(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
-                    string text = "Baboo: ";
+
                     if (Physics.Raycast(MainCamera.transform.position, MainCamera.transform.forward, out RaycastHit hit, interactDistance.Value, Game.BlockEntityLayerMask))
                     {
-                        text += hit.transform.name + " ";
                         Interactable hitInteractable = hit.transform.GetComponent<Interactable>();
-                        text += hitInteractable + " ";
+
                         if (hitInteractable != null)
                             lookingAt = hitInteractable;
                     }
-                    text += lookingAt + " ";
-                    Debug.Log(text);
 
                     if (lookingAt != null)
                     {
