@@ -106,6 +106,7 @@ namespace FPSController
         private Quaternion _lastSittingRotation;
         private Quaternion _lookRotation;
         private Quaternion _lastLookRotation;
+        private Quaternion _visualsRotation;
         private Vector3 _visualsPosition;
         private bool _died;
         private float _previousHealth;
@@ -216,6 +217,7 @@ namespace FPSController
             inputRotation = GetLookRotation(rotationX, rotationY).eulerAngles;
 
             _visualsPosition = BlockBehaviour.MeshRenderer.transform.localPosition;
+            _visualsRotation = BlockBehaviour.MeshRenderer.transform.localRotation;
 
             if (healthToggle.IsActive)
                 _previousHealth = Health.health = healthSlider.Value;
@@ -252,9 +254,15 @@ namespace FPSController
                     visuals.rotation = seat.transform.rotation * ViewOffset * Quaternion.AngleAxis(angle, Vector3.up);
                     visuals.position = seat.transform.position + seat.transform.forward * 0.25F;
                 } else
-                {
+                { 
                     visuals.position = transform.position + Quaternion.Inverse(ViewOffset) * _visualsPosition;
                     visuals.rotation = Quaternion.AngleAxis((transform.rotation * ViewOffset).eulerAngles.y, Vector3.up);
+                }
+
+                if (Dead)
+                {
+                    visuals.localPosition = _visualsPosition;
+                    visuals.localRotation = _visualsRotation;
                 }
             }
 
@@ -525,11 +533,14 @@ namespace FPSController
                 {
                     groundVelocity = seat.Rigidbody.velocity;
                     const float seatApproachSpeed = 16;
-                    goalVel = groundVelocity + Vector3.ClampMagnitude(seat.transform.position + seat.transform.forward * 1.75F - transform.position, 1) * seatApproachSpeed;
+                    Vector3 targetDirection = seat.transform.position + seat.transform.forward * 1.75F - transform.position;
+                    goalVel = groundVelocity + Vector3.ClampMagnitude(targetDirection, 1) * seatApproachSpeed;
+                    top.enabled = bottom.enabled = targetDirection.magnitude < 0.2F;
                 }
                 else
                 {
                     goalVel = groundVelocity + Vector3.Scale(input, new Vector3(1, 0, 1)) * speed.Value;
+                    top.enabled = bottom.enabled = true;
                 }
 
                 goalVel = Vector3.MoveTowards(goalVel, goalVel + bodyVelocity, timestep);
@@ -560,6 +571,9 @@ namespace FPSController
 
         public void Death()
         {
+            if (!IsSimulating)
+                return;
+
             _died = true;
             Health.health = 0;
 
@@ -589,6 +603,9 @@ namespace FPSController
 
         public void BloodHit()
         {
+            if (!IsSimulating)
+                return;
+
             if (HasAuthority)
                 ModNetworking.SendToAll(Mod.BloodHit.CreateMessage(Block.From(BlockBehaviour)));
 
@@ -605,6 +622,9 @@ namespace FPSController
         
         public void BloodParticles()
         {
+            if (!IsSimulating)
+                return;
+
             if (HasAuthority)
                 ModNetworking.SendToAll(Mod.BloodParticles.CreateMessage(Block.From(BlockBehaviour)));
 
@@ -745,7 +765,6 @@ namespace FPSController
 
             if (HasAuthority)
             {
-                top.enabled = bottom.enabled = !IsSitting;
                 Rigidbody.useGravity = !IsSitting;
             }
         }
