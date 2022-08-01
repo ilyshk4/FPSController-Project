@@ -23,6 +23,8 @@ namespace FPSController
         public MKey emulateKey;
         public Dictionary<KeyCode, RemoteKey> remoteKeys;
 
+        public BoxCollider interactCollider;
+
         public override bool EmulatesAnyKeys => true;
         public bool Occupied => User != null;
         public float EyesHeight => eyesHeight.Value;
@@ -49,14 +51,25 @@ namespace FPSController
         {
             base.OnSimulateStart();
 
-            BoxCollider interactCollider = gameObject.AddComponent<BoxCollider>();
-            interactCollider.isTrigger = true;
-            interactCollider.size = new Vector3(1.25F, 1.25F, 0.75F);
-            interactCollider.center = new Vector3(0, 0, 0.25F);
-
             Joint joint = gameObject.GetComponent<Joint>();
             if (joint != null)
                 joint.breakForce = joint.breakTorque = float.PositiveInfinity;
+        }
+
+        public override void SimulateUpdateAlways()
+        {
+            if (interactCollider == null)
+            {
+                interactCollider = gameObject.AddComponent<BoxCollider>();
+            } 
+
+            if (interactCollider != null)
+            {
+                interactCollider.enabled = true;
+                interactCollider.isTrigger = true;
+                interactCollider.size = new Vector3(1.25F, 1.25F, 0.75F);
+                interactCollider.center = new Vector3(0, 0, 0.25F);
+            }
         }
 
         public override void StartInteraction(Controller controller)
