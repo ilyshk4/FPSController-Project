@@ -67,6 +67,7 @@ namespace FPSController
             {
                 interactCollider.enabled = true;
                 interactCollider.isTrigger = true;
+                interactCollider.size = new Vector3(1F, 1F, 1F);
                 interactCollider.center = new Vector3(0, 0, 0.5F);
             }
         }

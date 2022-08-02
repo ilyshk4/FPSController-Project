@@ -110,6 +110,7 @@ namespace FPSController
         private Vector3 _visualsPosition;
         private bool _died;
         private float _previousHealth;
+        private RaycastHit[] _hits;
 
         private bool _crouching;
 
@@ -355,12 +356,22 @@ namespace FPSController
                         else
                             ModNetworking.SendToHost(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
 
-                    if (Physics.Raycast(MainCamera.transform.position, MainCamera.transform.forward, out RaycastHit hit, interactDistance.Value, Game.BlockEntityLayerMask))
-                    {
-                        Interactable hitInteractable = hit.transform.GetComponent<Interactable>();
+                    // This solution is required to fix unknown bug that can't be reproduced. The fix is to make sure nothing will prevent interaction.
 
+                    if (_hits == null)
+                        _hits = new RaycastHit[16];
+
+                    int count = Physics.RaycastNonAlloc(MainCamera.transform.position, MainCamera.transform.forward, _hits, interactDistance.Value, Game.BlockEntityLayerMask);
+                    for (int i = 0; i < count; i++)
+                    {
+                        RaycastHit hit = _hits[i];
+
+                        Interactable hitInteractable = hit.transform.GetComponent<Interactable>();
                         if (hitInteractable != null)
+                        {
                             lookingAt = hitInteractable;
+                            break;
+                        }
                     }
 
                     if (lookingAt != null)
