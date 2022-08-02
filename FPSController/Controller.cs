@@ -8,6 +8,8 @@ namespace FPSController
 {
     public class Controller : BlockScript, IExplosionEffect
     {
+        public static Controller Current;
+
         public MeshRenderer meshRenderer;
 
         public Vector3 inputDirection = Vector3.forward;
@@ -235,10 +237,33 @@ namespace FPSController
         {
             if (alwaysLabel.IsActive)
             {
-                LocalMachine machine = Machine.InternalObject;
-                machine.OnAnalysisReset(); // Resets ONLY center preventing machine from overriding controller's value.
-                machine.SetMachineCenter(transform.position + Vector3.up * (-machine.Size.y));
+                SetLabelPosition(transform.position + Vector3.up * (-Machine.InternalObject.Size.y));
             }
+        }
+        public override void OnSimulateStop()
+        {
+            if (IsSitting)
+                SetSeat(null);
+
+            if (controlling)
+                SetControlling(false);
+        }
+
+        public override void BuildingLateUpdate()
+        {
+            if (alwaysLabel.IsActive)
+            {
+                var centerBlock = Machine.InternalObject.LinkManager.GetLabelTarget();
+                if (centerBlock != null)
+                    SetLabelPosition(centerBlock.transform.position);
+            }
+        }
+
+        private void SetLabelPosition(Vector3 position)
+        {
+            LocalMachine machine = Machine.InternalObject;
+            machine.OnAnalysisReset(); // Resets ONLY center preventing machine from overriding controller's value.
+            machine.SetMachineCenter(position);
         }
 
         public override void SimulateUpdateAlways()
@@ -724,6 +749,11 @@ namespace FPSController
 
         public void SetControlling(bool value)
         {
+            if (Current != null && Current != this)
+                return;
+
+            Current = this;
+
             controlling = value;
 
             Cursor.visible = !value;
@@ -737,8 +767,11 @@ namespace FPSController
             meshRenderer.shadowCastingMode = 
                 value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
 
+
             if (!controlling)
             {
+                Current = null;
+
                 SetTargetCrouching(false);
 
                 if (IsSitting)
@@ -778,15 +811,6 @@ namespace FPSController
             {
                 Rigidbody.useGravity = !IsSitting;
             }
-        }
-
-        public override void OnSimulateStop()
-        {
-            if (IsSitting)
-                SetSeat(null);
-
-            if (controlling)
-                SetControlling(false);
         }
 
         private void OnGUI()
