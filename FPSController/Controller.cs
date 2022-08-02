@@ -126,7 +126,7 @@ namespace FPSController
 
         public override void SafeAwake()
         {
-            healthSlider = AddSlider("Health", "health-value", 0.5F, 0, 3F);
+            healthSlider = AddSlider("Health", "health-value", 0.5F, 0.1F, 3F);
             minimumDamage = AddSlider("Min Impact Damage", "min-damage", 0.5F, 0, 1F);
             fov = AddSlider("Camera FOV", "fov", 65, 50, 100);
             speed = AddSlider("Max Speed", "speed", 10, 0, 150);
@@ -140,7 +140,7 @@ namespace FPSController
             mass = AddSlider("Mass", "mass", 5, 1, 15F);
 
             activateKey = AddKey("Active", "active", KeyCode.B);
-            jump = AddKey("Jump", "jump", KeyCode.LeftAlt);
+            jump = AddKey("Jump/Dismount", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
             crouch = AddKey("Crouch", "crouch", KeyCode.LeftControl);
 
@@ -322,6 +322,15 @@ namespace FPSController
                     else
                         MainCamera.transform.rotation = _finalRotation;
 
+                    Vector3 cameraPosition;
+
+                    if (IsSitting)
+                        cameraPosition = seat.transform.position + seat.transform.forward * seat.EyesHeight;
+                    else
+                        cameraPosition = transform.position + transform.forward * 0.25F;
+
+                    MainCamera.transform.position = cameraPosition;
+
                     if (IsSitting)
                         foreach (var key in Seat.EmulatableKeys)
                         {
@@ -361,13 +370,13 @@ namespace FPSController
                     if (_hits == null)
                         _hits = new RaycastHit[16];
 
-                    int count = Physics.RaycastNonAlloc(MainCamera.transform.position, MainCamera.transform.forward, _hits, interactDistance.Value, Game.BlockEntityLayerMask);
+                    int count = Physics.RaycastNonAlloc(cameraPosition, MainCamera.transform.forward, _hits, interactDistance.Value, Game.BlockEntityLayerMask);
                     for (int i = 0; i < count; i++)
                     {
                         RaycastHit hit = _hits[i];
 
                         Interactable hitInteractable = hit.transform.GetComponent<Interactable>();
-                        if (hitInteractable != null)
+                        if (hitInteractable != null && hitInteractable.IsSimulating)
                         {
                             lookingAt = hitInteractable;
                             break;
@@ -394,15 +403,6 @@ namespace FPSController
                         StopInteraction(interactingWith);
                         interactingWith = null;
                     }
-
-                    Vector3 cameraPosition;
-
-                    if (IsSitting)
-                        cameraPosition = seat.transform.position + seat.transform.forward * seat.EyesHeight;
-                    else
-                        cameraPosition = transform.position + transform.forward * 0.25F;
-
-                    MainCamera.transform.position = cameraPosition;
 
                     Cursor.visible = false;
                 }
