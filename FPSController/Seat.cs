@@ -19,6 +19,7 @@ namespace FPSController
             public bool state, previousState;
         }
 
+        public MToggle crouched;
         public MSlider eyesHeight;
         public MKey emulateKey;
         public Dictionary<KeyCode, RemoteKey> remoteKeys;
@@ -35,6 +36,7 @@ namespace FPSController
         {
             base.SafeAwake();
 
+            crouched = AddToggle("Crouched", "crouched", false);
             eyesHeight = AddSlider("Eyes Height", "eyes-height", 1.75F, 0, 2.5F);
             emulateKey = AddEmulatorKey("Occupied", "occupied", KeyCode.None);
 

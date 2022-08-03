@@ -375,7 +375,7 @@ namespace FPSController
                             }
                         }
 
-                    if (crouch.IsPressed)
+                    if (crouch.IsPressed && !IsSitting)
                         if (toggleCrouch.IsActive)
                             SetTargetCrouching(!targetCrouching);
                         else
@@ -531,9 +531,12 @@ namespace FPSController
 
                 isGrounded = Physics.Raycast(transform.position + Vector3.down + CrouchOffset, Vector2.down, 0.75F, ControllerCollisionMask);
 
-                if (targetCrouching != _crouching && !Dead)
+                bool crouchingSit = IsSitting && seat.crouched.IsActive;
+                bool shouldCrouch = targetCrouching || crouchingSit;
+
+                if ((shouldCrouch != _crouching) && !Dead)
                 {     
-                    if (targetCrouching)
+                    if (shouldCrouch)
                     {
                         bottom.height = 1F;
                         bottom.center = new Vector3(0, 0F, 0);
@@ -542,7 +545,7 @@ namespace FPSController
                         _crouching = true;
                     }
 
-                    if (!targetCrouching)
+                    if (!shouldCrouch)
                     {
                         if (!Physics.SphereCast(transform.position, 0.25F, Vector2.up, out RaycastHit hit, 1F, ControllerCollisionMask))
                         {
@@ -567,7 +570,7 @@ namespace FPSController
                 {
                     groundVelocity = seat.Rigidbody.velocity;
                     const float seatApproachSpeed = 16;
-                    Vector3 targetDirection = seat.transform.position + seat.transform.forward * 1.75F - transform.position;
+                    Vector3 targetDirection = seat.transform.position + (seat.transform.forward * (crouchingSit ? 0.75F : 1.75F)) - transform.position;
                     goalVel = groundVelocity + Vector3.ClampMagnitude(targetDirection, 1) * seatApproachSpeed;
                     top.enabled = bottom.enabled = targetDirection.magnitude < 0.2F;
                 }
