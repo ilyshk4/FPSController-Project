@@ -183,6 +183,7 @@ namespace FPSController
                 topObj.transform.parent = transform;
                 topObj.transform.localPosition = Vector3.zero;
                 topObj.transform.localEulerAngles = Vector3.zero;
+                topObj.transform.localScale = Vector3.one;
                 top = topObj.AddComponent<SphereCollider>();
                 top.radius = 0.25F;
                 top.center = new Vector3(0, 0, 0);
@@ -192,6 +193,7 @@ namespace FPSController
                 bottomObj.transform.parent = transform;
                 bottomObj.transform.localPosition = Vector3.zero;
                 bottomObj.transform.localEulerAngles = Vector3.zero;
+                bottomObj.transform.localScale = Vector3.one;
                 bottom = bottomObj.AddComponent<CapsuleCollider>();
                 bottom.radius = 0.25F;
                 bottom.direction = 1;
@@ -375,7 +377,7 @@ namespace FPSController
                             }
                         }
 
-                    if (crouch.IsPressed && !IsSitting)
+                    if (crouch.IsPressed && !IsSitting) // Client relied check is bad.
                         if (toggleCrouch.IsActive)
                             SetTargetCrouching(!targetCrouching);
                         else
@@ -790,7 +792,7 @@ namespace FPSController
 
         public void SetTargetCrouching(bool value)
         {
-            targetCrouching = value;
+            targetCrouching = value; // Move this set to msg recieve.
             if (!HasAuthority)
                 ModNetworking.SendToHost(Mod.SetCrouch.CreateMessage(Block.From(BlockBehaviour), value));
         }
