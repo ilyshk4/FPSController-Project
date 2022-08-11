@@ -687,9 +687,7 @@ namespace FPSController
         {
             float magnitude = collision.relativeVelocity.magnitude;
             float massA = Rigidbody.mass;
-            float massB = collision.rigidbody?.mass ?? 0F;
-            float maxMass = Mathf.Max(massA, massB);
-            float damage = maxMass * magnitude * magnitude / 10000F;
+            float damage = massA * magnitude * magnitude / 10000F;
 
             if (damage > minimumDamage.Value)
             {
