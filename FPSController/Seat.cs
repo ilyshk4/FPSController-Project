@@ -10,7 +10,7 @@ namespace FPSController
     {
         public static readonly KeyCode[] EmulatableKeys = new KeyCode[]
         {
-            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D, KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.T, KeyCode.F, KeyCode.G, KeyCode.LeftShift, KeyCode.LeftControl, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3
+            KeyCode.Mouse0, KeyCode.Mouse1, KeyCode.W, KeyCode.A, KeyCode.S, KeyCode.D, KeyCode.Q, KeyCode.E, KeyCode.R, KeyCode.T, KeyCode.F, KeyCode.G, KeyCode.H, KeyCode.UpArrow, KeyCode.LeftArrow, KeyCode.RightArrow, KeyCode.DownArrow, KeyCode.LeftShift, KeyCode.LeftControl, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3
         };
 
         public class RemoteKey

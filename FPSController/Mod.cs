@@ -50,7 +50,7 @@ namespace FPSController
 
         public override void OnLoad()
 		{   
-            SetControllerInput = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3);
+            SetControllerInput = ModNetworking.CreateMessageType(DataType.Block, DataType.Vector3, DataType.Vector3, DataType.Boolean);
             Jump = ModNetworking.CreateMessageType(DataType.Block);
             SetCrouch = ModNetworking.CreateMessageType(DataType.Block, DataType.Boolean);
 
@@ -287,12 +287,14 @@ namespace FPSController
 
             Vector3 direction = (Vector3)msg.GetData(1);
             Vector3 rotation = (Vector3)msg.GetData(2);
+            bool controlling = (bool)msg.GetData(3);
 
             if (controller?.Machine.Player == msg.Sender)
                 if (controller != null)
                 {
                     controller.inputDirection = direction;
                     controller.inputRotation = rotation;
+                    controller.clientControlling = controlling;
                 }
         }
     }

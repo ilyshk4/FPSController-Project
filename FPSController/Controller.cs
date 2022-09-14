@@ -19,21 +19,24 @@ namespace FPSController
         public float targetRotationX, targetRotationY;
 
         public MSlider fov;
+        public MSlider zoomFov;
         public MSlider speed;
         public MSlider acceleration;
         public MSlider sensitivity;
         public MSlider smoothing;
         public MSlider groundStickDistance;
-        public MSlider groundStickSpread;
         public MSlider interactDistance;
         public MSlider jumpForce;
         public MSlider mass;
         public MSlider healthSlider;
         public MSlider minimumDamage;
+        public MSlider pushForceScale;
 
         public MKey activateKey;
+        public MKey controlled;
         public MKey jump;
         public MKey interact;
+        public MKey grab;
         public MKey crouch;
 
         public MLimits pitchLimits;
@@ -56,11 +59,15 @@ namespace FPSController
         public ParticleSystem bloodSquirt;
         public Transform bloodQuad;
 
+        public Rigidbody grabbed;
+        public SpringJoint grabJoint;
+
         public Seat seat;
 
         public bool controlling;
         public bool isGrounded;
         public bool targetCrouching;
+        public bool clientControlling;
 
         public float vertical, horizontal;
 
@@ -97,10 +104,11 @@ namespace FPSController
 
         public BlockHealthBar Health => BlockBehaviour.BlockHealth;
 
-        public Vector3 CrouchOffset => _crouching? Vector3.up : Vector3.zero;
+        public Vector3 CrouchOffset => _crouching ? Vector3.up : Vector3.zero;
 
         public bool Dead => Health.health <= 0;
 
+        private float _zoom;
         private float _oldFov;
         private float _oldNearClip;
         private long _localTicksCount = 0;
@@ -111,6 +119,7 @@ namespace FPSController
         private Quaternion _visualsRotation;
         private Vector3 _visualsPosition;
         private bool _died;
+        private bool _previousControlled;
         private float _previousHealth;
         private RaycastHit[] _hits;
 
@@ -119,6 +128,7 @@ namespace FPSController
         private static Quaternion ViewOffset = Quaternion.AngleAxis(-90, -Vector3.right);
 
         private static int ControllerCollisionMask = Game.BlockEntityLayerMask | 1 | 1 << 29;
+        public override bool EmulatesAnyKeys => true;
 
         private void Start()
         {
@@ -131,20 +141,23 @@ namespace FPSController
             healthSlider = AddSlider("Health", "health-value", 0.5F, 0.1F, 3F);
             minimumDamage = AddSlider("Min Impact Damage", "min-damage", 0.5F, 0, 1F);
             fov = AddSlider("Camera FOV", "fov", 65, 50, 100);
+            zoomFov = AddSlider("Zoom FOV", "zoom-fov", 20, 10, 100);
             speed = AddSlider("Max Speed", "speed", 10, 0, 150);
             acceleration = AddSlider("Max Acceleration", "acceleration", 75, 0, 200);
             jumpForce = AddSlider("Jump Force", "jump-force", 100, 0, 500);
             sensitivity = AddSlider("Look Sensitivity", "sensitivity", 85F, 0, 200);
             smoothing = AddSlider("Look Smoothing", "smoothing", 60F, 0, 100);
             groundStickDistance = AddSlider("Ground Stick Distance", "stick-distance", 1.5F, 0, 3F);
-            groundStickSpread = AddSlider("Ground Stick Spread", "stick-spread", 20, 0, 85);
+            pushForceScale = AddSlider("Push Force Scale", "push-force-scale", 1F, 0, 1F);
             interactDistance = AddSlider("Interact Distance", "interact-distance", 5, 0, 15F);
             mass = AddSlider("Mass", "mass", 5, 1, 15F);
 
             activateKey = AddKey("Active", "active", KeyCode.B);
             jump = AddKey("Jump/Dismount", "jump", KeyCode.LeftAlt);
             interact = AddKey("Interact", "interact", KeyCode.E);
+            grab = AddKey("Grab", "grab", KeyCode.F);
             crouch = AddKey("Crouch", "crouch", KeyCode.LeftControl);
+            controlled = AddEmulatorKey("Controlled", "controlled", KeyCode.None);
 
             pitchLimits = AddLimits("Pitch Limits", "pitch", 80, 80, 80, new FauxTransform(new Vector3(-0.5F, 0, 0), Quaternion.Euler(-90, 90, 180), Vector3.one * 0.2F));
             alwaysLabel = AddToggle("Attach Label", "always-label", true);
@@ -235,6 +248,15 @@ namespace FPSController
             }
         }
 
+        public override void SendKeyEmulationUpdateHost()
+        {
+            if (clientControlling != _previousControlled)
+            {
+                EmulateKeys(Mod.NoKeys, controlled, clientControlling);
+                _previousControlled = clientControlling;
+            }
+        }
+
         public override void SimulateLateUpdateAlways()
         {
             if (alwaysLabel.IsActive)
@@ -280,7 +302,7 @@ namespace FPSController
                     float angle = (transform.rotation * Quaternion.Inverse(seat.transform.rotation)).eulerAngles.y;
 
                     visuals.rotation = seat.transform.rotation * ViewOffset * Quaternion.AngleAxis(angle, Vector3.up);
-                    visuals.position = seat.transform.position + seat.transform.forward * 0.25F;
+                    visuals.position = seat.transform.position + seat.transform.forward * (seat.crouched.IsActive ? -0.75F : 0.25F);
                 } else
                 { 
                     visuals.position = transform.position + Quaternion.Inverse(ViewOffset) * _visualsPosition;
@@ -321,6 +343,8 @@ namespace FPSController
                 vertical = Mathf.MoveTowards(vertical, targetVertical, Time.unscaledDeltaTime * inputMaxDeltaScale);
                 horizontal = Mathf.MoveTowards(horizontal, targetHorizontal, Time.unscaledDeltaTime * inputMaxDeltaScale);
 
+                clientControlling = HasAuthority && controlling;
+
                 if (controlling)
                 {
                     const float oldVersionScale = 1F / 60F;
@@ -349,14 +373,10 @@ namespace FPSController
                     else
                         MainCamera.transform.rotation = _finalRotation;
 
-                    Vector3 cameraPosition;
-
-                    if (IsSitting)
-                        cameraPosition = seat.transform.position + seat.transform.forward * seat.EyesHeight;
-                    else
-                        cameraPosition = transform.position + transform.forward * 0.25F;
+                    Vector3 cameraPosition = GetCameraPosition();
 
                     MainCamera.transform.position = cameraPosition;
+                    MainCamera.fieldOfView = HUDCamera.fieldOfView = zoomFov.Value + (1F - _zoom) * (fov.Value - zoomFov.Value);
 
                     if (IsSitting)
                         foreach (var key in Seat.EmulatableKeys)
@@ -391,6 +411,8 @@ namespace FPSController
                             Jump();
                         else
                             ModNetworking.SendToHost(Mod.Jump.CreateMessage(Block.From(BlockBehaviour)));
+
+                    _zoom = Mathf.Clamp01(_zoom - Input.mouseScrollDelta.y * Time.deltaTime * 10);
 
                     // This solution is required to fix unknown bug that can't be reproduced. The fix is to make sure nothing will prevent interaction.
 
@@ -440,6 +462,18 @@ namespace FPSController
                     interactingWith = null;
                 }
             }
+        }
+
+        private Vector3 GetCameraPosition()
+        {
+            Vector3 cameraPosition;
+
+            if (IsSitting)
+                cameraPosition = seat.transform.position + seat.transform.forward * seat.EyesHeight;
+            else
+                cameraPosition = transform.position + transform.forward * 0.25F;
+
+            return cameraPosition;
         }
 
         public void SetSeatKey(KeyCode key, bool value)
@@ -516,15 +550,14 @@ namespace FPSController
 
                 if (!HasAuthority && _localTicksCount % 5 == 0)
                 {
-                    Message inputMessage = Mod.SetControllerInput.CreateMessage(Block.From(BlockBehaviour), inputDirection, inputRotation);
+                    Message inputMessage = Mod.SetControllerInput.CreateMessage(Block.From(BlockBehaviour), inputDirection, inputRotation, controlling);
                     ModNetworking.SendToHost(inputMessage);
                 }
                 _localTicksCount++;
-            }
+            } 
 
             if (HasAuthority && IsSimulating)
             {
-
                 if (BlockBehaviour.fireTag.burning)
                     Health.DamageBlock(0.004F);
 
@@ -561,10 +594,13 @@ namespace FPSController
 
                 float timestep = Time.fixedDeltaTime;
 
-                Vector3 groundVelocity = GetGroundVelocitySpread();
+                Vector3 groundVelocity = GetGroundVelocity();
                 Vector3 bodyVelocity = Rigidbody.velocity;
 
-                Vector3 input = Vector3.ClampMagnitude(inputDirection, 1) * (_crouching && isGrounded ? 0.5F : 1F);
+                Vector3 input = Vector3.Scale(Vector3.ClampMagnitude(inputDirection, 1) * (_crouching && isGrounded ? 0.5F : 1F), new Vector3(1, 0, 1));
+
+                if (Physics.CapsuleCast(transform.position + Vector3.up * 0.25F, transform.position + Vector3.down * (_crouching ? 0.25F : 1.25F), 0.2F, input, speed.Value * timestep, ControllerCollisionMask, QueryTriggerInteraction.Ignore))
+                    input *= pushForceScale.Value;
 
                 Vector3 goalVel;
 
@@ -578,7 +614,7 @@ namespace FPSController
                 }
                 else
                 {
-                    goalVel = groundVelocity + Vector3.Scale(input, new Vector3(1, 0, 1)) * speed.Value;
+                    goalVel = groundVelocity + input * speed.Value;
                     top.enabled = bottom.enabled = true;
                 }
 
@@ -593,6 +629,40 @@ namespace FPSController
                 const float maxRotationDelta = 10F;
 
                 float rotationDelta = Quaternion.Angle(Rigidbody.rotation, target);
+
+                if (!grabbed && grab.IsHeld && !grabJoint && clientControlling &&
+                    Physics.Raycast(GetCameraPosition(), transform.rotation * ViewOffset * Vector3.forward, out RaycastHit grabHit, interactDistance.Value, Game.BlockEntityLayerMask, QueryTriggerInteraction.Ignore))
+                {
+                    var body = grabHit.collider.attachedRigidbody;
+                    if (body)
+                    {
+                        grabbed = body;
+                        grabJoint = gameObject.AddComponent<SpringJoint>();
+                        grabJoint.connectedBody = grabbed;
+                        grabJoint.anchor = new Vector3(0, -grabHit.distance, 0);
+                        grabJoint.autoConfigureConnectedAnchor = false;
+                        grabJoint.connectedAnchor = grabbed.transform.InverseTransformPoint(grabHit.point);
+                        grabJoint.spring = 10000;
+                        grabJoint.damper = 1000;
+                        grabJoint.enableCollision = true;
+                        grabJoint.breakForce = grabJoint.breakTorque = 5000;
+                    }
+                }
+
+                if (!grab.IsHeld || Dead)
+                {
+
+                    if (grabJoint)
+                    {
+                        Destroy(grabJoint);
+                        grabJoint = null;
+                    }
+                }
+
+                if (grabbed && !grabJoint)
+                {
+                    grabbed = null;
+                }
 
                 if (!Dead)
                 {
@@ -770,7 +840,6 @@ namespace FPSController
             meshRenderer.shadowCastingMode = 
                 value ? UnityEngine.Rendering.ShadowCastingMode.ShadowsOnly : UnityEngine.Rendering.ShadowCastingMode.On;
 
-
             if (!controlling)
             {
                 Current = null;
@@ -857,45 +926,17 @@ namespace FPSController
                 SetSeat(null);
         }
 
-        public Vector3 GetGroundVelocitySpread()
-        {
-            float downScale = Mathf.Min(Mathf.Tan(groundStickSpread.Value), 100);
-            Vector3 velocity = Vector3.zero;
-            velocity = GetGroundVelocity(Vector3.down * downScale);
-            if (velocity != Vector3.zero)
-                return velocity;
-            velocity = GetGroundVelocity(Vector3.down * downScale + Vector3.right);
-            if (velocity != Vector3.zero)         
-                return velocity;                  
-            velocity = GetGroundVelocity(Vector3.down * downScale + Vector3.left);
-            if (velocity != Vector3.zero)             
-                return velocity;                      
-            velocity = GetGroundVelocity(Vector3.down * downScale + Vector3.forward);
-            if (velocity != Vector3.zero)        
-                return velocity;                 
-            velocity = GetGroundVelocity(Vector3.down * downScale + Vector3.back);
-            if (velocity != Vector3.zero)            
-                return velocity;
-            velocity = GetGroundVelocity(Vector3.down * downScale * 0.5F + Vector3.right);
-            if (velocity != Vector3.zero)
-                return velocity;
-            velocity = GetGroundVelocity(Vector3.down * downScale * 0.5F + Vector3.left);
-            if (velocity != Vector3.zero)
-                return velocity;
-            velocity = GetGroundVelocity(Vector3.down * downScale * 0.5F + Vector3.forward);
-            if (velocity != Vector3.zero)
-                return velocity;
-            velocity = GetGroundVelocity(Vector3.down * downScale * 0.5F + Vector3.back);
-            if (velocity != Vector3.zero)
-                return velocity;
-            return velocity;
-        }
+        private RaycastHit[] _overlap = new RaycastHit[8];
 
-        public Vector3 GetGroundVelocity(Vector3 direction)
+        public Vector3 GetGroundVelocity()
         {
-            if (Physics.Raycast(transform.position + Vector3.down * 1.4F + CrouchOffset, direction, out RaycastHit hit, 1F + groundStickDistance.Value, Game.BlockEntityLayerMask))
+            int count = Physics.SphereCastNonAlloc(transform.position + Vector3.down * 1.5F + CrouchOffset, 0.24F, Vector3.down, _overlap, groundStickDistance.Value, Game.BlockEntityLayerMask, QueryTriggerInteraction.Ignore);
+            for (int i = 0; i < count; i++)
+            {
+                RaycastHit hit = _overlap[i];
                 if (hit.rigidbody != null && hit.rigidbody.GetComponent<Controller>() == null)
                     return hit.rigidbody.velocity;
+            }
             return Vector3.zero;
         }
 
